@@ -1,5 +1,19 @@
 # Journal des modifications (CHANGELOG_AI)
 
+## [006] - Retrait de la capture flutter_01.png
+- Date : 2026-11-08
+- Demande : Retrait du suivi Git de flutter_01.png et ajout des règles d'exclusion des captures d'écran à la racine dans .gitignore.
+- Fichiers créés : Aucun
+- Fichiers modifiés : `.gitignore`, `CHANGELOG_AI.md`
+- Fichiers supprimés : `flutter_01.png`
+- Packages ajoutés : Aucun
+- Détail :
+  - Suppression du fichier `flutter_01.png` de l'index Git (`git rm flutter_01.png`).
+  - Ajout des règles `flutter_*.png` et `/*.png` dans `.gitignore` ciblant uniquement la racine, préservant ainsi les icônes du dossier `android/` et d'éventuels futurs assets.
+  - Aucun code Flutter modifié.
+- État : fonctionne
+- À traiter : Implémentation future de la découverte réseau Wi-Fi / mDNS et des protocoles réels de TV.
+
 ## [005] - Initialisation Git et règles de versionnage
 - Date : 2026-11-08
 - Demande : Initialisation du versionnage Git du projet, liaison avec le dépôt distant GitHub (https://github.com/CalebBis/BIS-REMOTE.git), premier push sur main, et intégration des règles permanentes de gestion de versions.
