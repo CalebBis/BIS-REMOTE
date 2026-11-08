@@ -45,7 +45,7 @@ lib/
 ├── models/
 │   ├── discovered_tv.dart           # Modèle TV (nom, IP, marque, port, MAC)
 │   ├── remote_key.dart              # Enumération des touches de la télécommande
-│   └── remote_mode.dart             # Enumération des modes d'affichage (dpad, touchpad, numpad)
+│   └── remote_mode.dart             # Énumération des modes de contrôle (navigation, touchpad, numeric)
 ├── screens/
 │   ├── remote_screen.dart           # Écran principal de la télécommande
 │   └── discovery_screen.dart        # Écran de découverte et d'appairage

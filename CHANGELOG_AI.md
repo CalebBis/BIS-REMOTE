@@ -1,5 +1,24 @@
 # Journal des modifications (CHANGELOG_AI)
 
+## [016] - Nettoyage du doublon d'icône et clarification des modes
+- Date : 2026-11-08
+- Demande : Nettoyage après [015] sans toucher au code : suppression du doublon `assets/icon/Gemini_Generated_Image_csgslcsgslcsgslc.png` avec `git rm` après vérification de l'égalité de hash SHA256 avec `assets/icon/icon.png`, vérification du contenu brut de `lib/models/remote_mode.dart` pour confirmer les noms exacts des modes (`navigation`, `touchpad`, `numeric`), correction de la description dans la documentation, vérification des dimensions de `icon.png` (1024x1024), journal [016], commit local et rapport de passation.
+- Fichiers créés : Aucun
+- Fichiers modifiés :
+  - `README.md`
+  - `CHANGELOG_AI.md`
+- Fichiers supprimés :
+  - `assets/icon/Gemini_Generated_Image_csgslcsgslcsgslc.png`
+- Packages ajoutés : Aucun
+- Détail :
+  - Vérification de l'intégrité par SHA256 : `Get-FileHash` a confirmé que `assets/icon/Gemini_Generated_Image_csgslcsgslcsgslc.png` et `assets/icon/icon.png` sont strictement identiques (`99544BF9B5DAED20845AC7E3580855B7AE62D9FE9155FD09B6A5C830F9BEA88E`).
+  - Suppression de l'image en doublon `assets/icon/Gemini_Generated_Image_csgslcsgslcsgslc.png` du suivi git via `git rm`.
+  - Dimensions de l'icône `assets/icon/icon.png` vérifiées dans les métadonnées IHDR du fichier PNG : exactement 1024x1024 pixels, 750 320 octets.
+  - Clarification de `RemoteMode` dans la documentation : l'enum `RemoteMode` dans `lib/models/remote_mode.dart` définit les modes `navigation` (libellé 'Navigation'), `touchpad` (libellé 'Pavé tactile') et `numeric` (libellé 'Chiffres'). Correction apportée dans l'arborescence de `README.md`.
+  - Validation : `flutter analyze` 100% propre (No issues found!).
+- État : fonctionne
+- À traiter : Aucun
+
 ## [015] - Finitions de l'application (nom, orientation, icône, démarrage, barre d'état, README)
 - Date : 2026-11-08
 - Demande : Finitions de l'application sans toucher à la logique TV, connexion, appairage ni WoL : nom "BisTv Remote" (AndroidManifest + title main.dart), orientation portrait verrouillée, génération des icônes Android classique et adaptative avec flutter_launcher_icons depuis assets/icon/icon.png, fond d'écran de démarrage sombre #111418, icônes claires sur barre d'état sombre (SystemUiOverlayStyle), README.md complet en français, et vérification .gitignore / nettoyage.
