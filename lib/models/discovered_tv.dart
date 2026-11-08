@@ -35,6 +35,7 @@ class DiscoveredTv {
     this.port,
     this.location,
     this.extraInfo,
+    this.macAddress,
   });
 
   /// Nom convivial du téléviseur (ex: "Samsung QLED Salon" ou "Android TV").
@@ -55,6 +56,9 @@ class DiscoveredTv {
   /// Informations additionnelles (en-têtes HTTP, clés TXT mDNS, etc.).
   final Map<String, String>? extraInfo;
 
+  /// Adresse physique MAC du téléviseur (pour le réveil Wake-on-LAN).
+  final String? macAddress;
+
   /// Crée une copie enrichie avec de nouveaux champs.
   DiscoveredTv copyWith({
     String? name,
@@ -63,6 +67,7 @@ class DiscoveredTv {
     int? port,
     String? location,
     Map<String, String>? extraInfo,
+    String? macAddress,
   }) {
     return DiscoveredTv(
       name: name ?? this.name,
@@ -71,6 +76,7 @@ class DiscoveredTv {
       port: port ?? this.port,
       location: location ?? this.location,
       extraInfo: extraInfo ?? this.extraInfo,
+      macAddress: macAddress ?? this.macAddress,
     );
   }
 
@@ -85,9 +91,10 @@ class DiscoveredTv {
         'port': port,
         'location': location,
         'extraInfo': extraInfo,
+        'macAddress': macAddress,
       };
 
-  /// Reconstruit une instance à partir d'un Map JSON.
+  /// Reconstruit une instance à partir d'un Map JSON (rétrocompatible).
   factory DiscoveredTv.fromJson(Map<String, dynamic> json) {
     return DiscoveredTv(
       name: json['name'] as String? ?? 'TV inconnue',
@@ -101,6 +108,7 @@ class DiscoveredTv {
       extraInfo: json['extraInfo'] != null
           ? Map<String, String>.from(json['extraInfo'] as Map)
           : null,
+      macAddress: json['macAddress'] as String?,
     );
   }
 

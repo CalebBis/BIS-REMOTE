@@ -19,6 +19,7 @@ class RemoteButton extends ConsumerWidget {
     this.borderRadius,
     this.shape = BoxShape.rectangle,
     this.fontSize,
+    this.onPressed,
   }) : assert(icon != null || label != null, 'Un bouton doit posséder une icône ou un libellé textuel');
 
   final RemoteKey remoteKey;
@@ -31,10 +32,15 @@ class RemoteButton extends ConsumerWidget {
   final BorderRadius? borderRadius;
   final BoxShape shape;
   final double? fontSize;
+  final VoidCallback? onPressed;
 
   void _handlePress(BuildContext context, WidgetRef ref) {
     HapticFeedback.lightImpact();
-    ref.read(tvControllerProvider).sendCommand(remoteKey);
+    if (onPressed != null) {
+      onPressed!();
+    } else {
+      ref.read(tvControllerProvider).sendCommand(remoteKey);
+    }
   }
 
   @override

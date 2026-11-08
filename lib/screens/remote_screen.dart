@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/discovered_tv.dart';
@@ -5,6 +6,8 @@ import '../models/remote_key.dart';
 import '../models/remote_mode.dart';
 import '../services/android_tv_pairing_service.dart';
 import '../services/tv_controller.dart';
+import '../services/wake_on_lan_service.dart';
+import 'discovery_screen.dart';
 import '../widgets/dpad_widget.dart';
 import '../widgets/mode_selector.dart';
 import '../widgets/numeric_keypad.dart';
@@ -30,6 +33,9 @@ class RemoteScreen extends ConsumerStatefulWidget {
 }
 
 class _RemoteScreenState extends ConsumerState<RemoteScreen> with WidgetsBindingObserver {
+  Timer? _wakeRetryTimer;
+  bool _isWakingUp = false;
+
   @override
   void initState() {
     super.initState();
@@ -41,8 +47,123 @@ class _RemoteScreenState extends ConsumerState<RemoteScreen> with WidgetsBinding
 
   @override
   void dispose() {
+    _wakeRetryTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  Future<void> _handlePowerPress() async {
+    final selectedTv = ref.read(selectedTvProvider);
+    if (selectedTv == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Aucune TV sélectionnée'),
+          action: SnackBarAction(
+            label: 'Rechercher',
+            textColor: const Color(0xFF00C8F0),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const DiscoveryScreen()),
+              );
+            },
+          ),
+        ),
+      );
+      return;
+    }
+
+    final connState = selectedTv.brand == TvBrand.androidTv
+        ? ref.read(androidTvConnectionStateProvider)
+        : AndroidTvConnectionState.connected;
+
+    final isConnected = connState == AndroidTvConnectionState.connected;
+
+    if (isConnected) {
+      // Connectée : transmission normale de la commande Power
+      ref.read(tvControllerProvider).sendCommand(RemoteKey.power);
+      return;
+    }
+
+    // Hors ligne : vérification de l'adresse MAC
+    final mac = selectedTv.macAddress;
+    if (mac == null || mac.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Ajoutez l\'adresse MAC de la TV pour pouvoir l\'allumer'),
+          backgroundColor: const Color(0xFF1B2223),
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'Configurer',
+            textColor: const Color(0xFF00C8F0),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const DiscoveryScreen()),
+              );
+            },
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Réveil par Wake-on-LAN
+    final wol = ref.read(wakeOnLanServiceProvider);
+    await wol.wakeTv(mac);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Réveil de la TV…'),
+        backgroundColor: Color(0xFF00525A),
+        duration: Duration(seconds: 3),
+      ),
+    );
+
+    // Relance de la reconnexion avec fréquence augmentée pendant 40 secondes
+    _startWakeupRetry(selectedTv);
+  }
+
+  void _startWakeupRetry(DiscoveredTv tv) {
+    if (_isWakingUp) return;
+    _isWakingUp = true;
+    _wakeRetryTimer?.cancel();
+
+    int elapsedSeconds = 0;
+    const interval = Duration(seconds: 3);
+    const maxDuration = Duration(seconds: 40);
+
+    // Tentative de reconnexion immédiate
+    ref.invalidate(androidTvControllerProvider(tv.ip));
+
+    _wakeRetryTimer = Timer.periodic(interval, (timer) {
+      elapsedSeconds += interval.inSeconds;
+
+      final currentState = ref.read(androidTvConnectionStateProvider);
+      if (currentState == AndroidTvConnectionState.connected) {
+        timer.cancel();
+        _isWakingUp = false;
+        debugPrint('[WakeOnLan] TV réveillée et connectée en $elapsedSeconds secondes.');
+        return;
+      }
+
+      if (elapsedSeconds >= maxDuration.inSeconds) {
+        timer.cancel();
+        _isWakingUp = false;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('La TV ne répond pas. Vérifiez que le réveil par réseau est activé dans ses paramètres.'),
+              backgroundColor: Color(0xFFB71C1C),
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Tentative de reconnexion accélérée
+      ref.invalidate(androidTvControllerProvider(tv.ip));
+    });
   }
 
   @override
@@ -83,19 +204,20 @@ class _RemoteScreenState extends ConsumerState<RemoteScreen> with WidgetsBinding
             children: [
               // 1. Bandeau TV (pill étirée) + bouton Power rond rouge (56 dp)
               Row(
-                children: const [
-                  Expanded(
+                children: [
+                  const Expanded(
                     child: StatusBanner(),
                   ),
-                  SizedBox(width: 12),
+                  const SizedBox(width: 12),
                   RemoteButton(
                     remoteKey: RemoteKey.power,
                     icon: Icons.power_settings_new_rounded,
                     shape: BoxShape.circle,
                     width: 56,
                     height: 56,
-                    backgroundColor: Color(0xFFE53935),
+                    backgroundColor: const Color(0xFFE53935),
                     foregroundColor: Colors.white,
+                    onPressed: _handlePowerPress,
                   ),
                 ],
               ),

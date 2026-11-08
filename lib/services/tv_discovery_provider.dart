@@ -85,6 +85,21 @@ class SelectedTvNotifier extends Notifier<DiscoveredTv?> {
     }
   }
 
+  /// Met à jour l'adresse MAC de la TV sélectionnée et persiste la modification.
+  Future<void> updateMacAddress(String? macAddress) async {
+    if (state == null) return;
+    final updatedTv = state!.copyWith(macAddress: macAddress);
+    state = updatedTv;
+
+    try {
+      final jsonStr = jsonEncode(updatedTv.toJson());
+      await _storage.write(key: _storageKey, value: jsonStr);
+      debugPrint('[AutoConnect] Adresse MAC mémorisée pour ${updatedTv.name}');
+    } catch (e) {
+      debugPrint('[AutoConnect] Erreur sauvegarde adresse MAC : $e');
+    }
+  }
+
   /// Efface la TV sélectionnée et sa mémorisation locale.
   Future<void> clearSelection() async {
     state = null;

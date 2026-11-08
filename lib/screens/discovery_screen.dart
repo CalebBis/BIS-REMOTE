@@ -6,6 +6,7 @@ import '../models/discovered_tv.dart';
 import '../services/android_tv_pairing_service.dart';
 import '../services/tv_discovery_provider.dart';
 import '../services/tv_discovery_service.dart';
+import '../services/wake_on_lan_service.dart';
 
 /// Écran de recherche automatique (SSDP / mDNS) et d'ajout manuel des téléviseurs sur le réseau local.
 class DiscoveryScreen extends ConsumerStatefulWidget {
@@ -960,7 +961,7 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen> {
   }
 }
 
-class _DiscoveredTvTile extends StatelessWidget {
+class _DiscoveredTvTile extends ConsumerStatefulWidget {
   const _DiscoveredTvTile({
     required this.tv,
     required this.isSelected,
@@ -974,6 +975,74 @@ class _DiscoveredTvTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
   final VoidCallback? onForget;
+
+  @override
+  ConsumerState<_DiscoveredTvTile> createState() => _DiscoveredTvTileState();
+}
+
+class _DiscoveredTvTileState extends ConsumerState<_DiscoveredTvTile> {
+  late TextEditingController _macController;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _macController = TextEditingController(text: widget.tv.macAddress ?? '');
+  }
+
+  @override
+  void didUpdateWidget(covariant _DiscoveredTvTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.tv.macAddress != oldWidget.tv.macAddress) {
+      _macController.text = widget.tv.macAddress ?? '';
+    }
+  }
+
+  @override
+  void dispose() {
+    _macController.dispose();
+    super.dispose();
+  }
+
+  void _saveMac() {
+    final text = _macController.text.trim();
+    if (text.isEmpty) {
+      setState(() => _errorText = null);
+      ref.read(selectedTvProvider.notifier).updateMacAddress(null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Adresse MAC effacée.'),
+          backgroundColor: Color(0xFF00525A),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    if (!WakeOnLanService.isValidMac(text)) {
+      setState(() {
+        _errorText = 'Format invalide (ex: AA:BB:CC:DD:EE:FF)';
+      });
+      return;
+    }
+
+    final normalized = WakeOnLanService.normalizeMac(text)!;
+    setState(() {
+      _errorText = null;
+      _macController.text = normalized;
+    });
+
+    ref.read(selectedTvProvider.notifier).updateMacAddress(normalized);
+    FocusScope.of(context).unfocus();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Adresse MAC mémorisée : $normalized'),
+        backgroundColor: const Color(0xFF00525A),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
 
   IconData _getBrandIcon(TvBrand brand) {
     switch (brand) {
@@ -992,6 +1061,9 @@ class _DiscoveredTvTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isSelected = widget.isSelected;
+    final tv = widget.tv;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -1009,105 +1081,184 @@ class _DiscoveredTvTile extends StatelessWidget {
           ),
         ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Row(
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF262D2E),
-                    shape: BoxShape.circle,
-                    border: isSelected
-                        ? Border.all(color: const Color(0xFF00C8F0), width: 1.5)
-                        : null,
-                  ),
-                  child: Icon(
-                    _getBrandIcon(tv.brand),
-                    color: isSelected
-                        ? const Color(0xFF00C8F0)
-                        : const Color(0xFFE3E8E8),
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        DiscoveryScreen.formatTvName(tv),
-                        style: const TextStyle(
-                          color: Color(0xFFE3E8E8),
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onTap,
+              onLongPress: widget.onLongPress,
+              borderRadius: BorderRadius.circular(20),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF262D2E),
+                        shape: BoxShape.circle,
+                        border: isSelected
+                            ? Border.all(color: const Color(0xFF00C8F0), width: 1.5)
+                            : null,
                       ),
-                      const SizedBox(height: 4),
-                      Row(
+                      child: Icon(
+                        _getBrandIcon(tv.brand),
+                        color: isSelected
+                            ? const Color(0xFF00C8F0)
+                            : const Color(0xFFE3E8E8),
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            tv.ip,
+                            DiscoveryScreen.formatTvName(tv),
                             style: const TextStyle(
-                              color: Color(0xFF8E999A),
-                              fontSize: 13,
+                              color: Color(0xFFE3E8E8),
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF262D2E),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              tv.brand.displayName,
-                              style: const TextStyle(
-                                color: Color(0xFF7FD6DC),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Text(
+                                tv.ip,
+                                style: const TextStyle(
+                                  color: Color(0xFF8E999A),
+                                  fontSize: 13,
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF262D2E),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  tv.brand.displayName,
+                                  style: const TextStyle(
+                                    color: Color(0xFF7FD6DC),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                ),
-                if (isSelected && onForget != null)
-                  IconButton(
-                    icon: const Icon(
-                      Icons.delete_outline_rounded,
-                      color: Color(0xFFE53935),
-                      size: 22,
                     ),
-                    tooltip: 'Oublier cette TV',
-                    onPressed: onForget,
-                  )
-                else
-                  Icon(
-                    isSelected
-                        ? Icons.check_circle_rounded
-                        : Icons.arrow_forward_ios_rounded,
-                    color: isSelected
-                        ? const Color(0xFF00C8F0)
-                        : const Color(0xFF555F61),
-                    size: isSelected ? 24 : 16,
-                  ),
-              ],
+                    if (isSelected && widget.onForget != null)
+                      IconButton(
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          color: Color(0xFFE53935),
+                          size: 22,
+                        ),
+                        tooltip: 'Oublier cette TV',
+                        onPressed: widget.onForget,
+                      )
+                    else
+                      Icon(
+                        isSelected
+                            ? Icons.check_circle_rounded
+                            : Icons.arrow_forward_ios_rounded,
+                        color: isSelected
+                            ? const Color(0xFF00C8F0)
+                            : const Color(0xFF555F61),
+                        size: isSelected ? 24 : 16,
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
+          if (isSelected)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Divider(color: Color(0xFF262D2E), height: 1),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: const [
+                      Icon(Icons.wifi_tethering_rounded, size: 16, color: Color(0xFF00C8F0)),
+                      SizedBox(width: 8),
+                      Text(
+                        'Adresse MAC (allumage à distance)',
+                        style: TextStyle(
+                          color: Color(0xFF00C8F0),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _macController,
+                          style: const TextStyle(
+                            color: Color(0xFFE3E8E8),
+                            fontSize: 14,
+                            fontFamily: 'monospace',
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'ex : AA:BB:CC:DD:EE:FF',
+                            hintStyle: const TextStyle(color: Color(0xFF555F61)),
+                            errorText: _errorText,
+                            errorStyle: const TextStyle(fontSize: 11),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            filled: true,
+                            fillColor: const Color(0xFF262D2E),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                          onSubmitted: (_) => _saveMac(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: _saveMac,
+                        icon: const Icon(Icons.check_rounded, color: Color(0xFF00C8F0)),
+                        tooltip: 'Enregistrer l\'adresse MAC',
+                        style: IconButton.styleFrom(
+                          backgroundColor: const Color(0xFF262D2E),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'À trouver dans les paramètres réseau de la TV ou de votre box. Prenez l\'adresse Wi-Fi.',
+                    style: TextStyle(
+                      color: Color(0xFF8E999A),
+                      fontSize: 11,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

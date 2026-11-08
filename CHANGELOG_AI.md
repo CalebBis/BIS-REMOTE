@@ -1,5 +1,42 @@
 # Journal des modifications (CHANGELOG_AI)
 
+## [014] - Allumage à distance par Wake-on-LAN (WoL)
+- Date : 2026-11-08
+- Demande : Ajouter l'allumage à distance par Wake-on-LAN sans nouveau package (dart:io). Champ optionnel `macAddress` rétrocompatible dans `DiscoveredTv`, saisie et validation normalisée de l'adresse MAC sur la TV sélectionnée dans l'écran de découverte avec texte d'aide, service `WakeOnLanService` émettant le paquet magique (102 octets, 3 salves espacées de 300 ms sur ports 9 et 7 en broadcast local /24 et 255.255.255.255 avec `broadcastEnabled`), adaptation du bouton Power (envoi normal si connectée, réveil WoL avec SnackBar et reconnexion accélérée pendant 40s si hors ligne avec MAC, invitation à configurer si sans MAC, message d'échec après 40s si la TV ne répond pas), et logs [WakeOnLan] avec masquage partiel de l'adresse MAC.
+- Fichiers créés :
+  - `lib/services/wake_on_lan_service.dart`
+  - `test/wake_on_lan_test.dart`
+- Fichiers modifiés :
+  - `lib/models/discovered_tv.dart`
+  - `lib/services/tv_discovery_provider.dart`
+  - `lib/widgets/remote_button.dart`
+  - `lib/screens/remote_screen.dart`
+  - `lib/screens/discovery_screen.dart`
+  - `CHANGELOG_AI.md`
+- Fichiers supprimés : Aucun
+- Packages ajoutés : Aucun
+- Détail :
+  - Modèle `DiscoveredTv` :
+    - Ajout du champ `final String? macAddress`.
+    - Sérialisation et désérialisation JSON rétrocompatibles préservant les TV mémorisées sans adresse MAC (`macAddress: json['macAddress'] as String?`).
+  - Service `WakeOnLanService` (`lib/services/wake_on_lan_service.dart`) :
+    - Méthodes statiques `isValidMac`, `normalizeMac` (séparateur `:` en majuscules) et `maskMac` (format `A1:B2:**:**:**:F6` pour la sécurité des logs).
+    - Construction rigoureuse du paquet magique de 102 octets (`0xFF` x 6 suivi de 16 répétitions de l'adresse MAC).
+    - Déduction des adresses de diffusion du sous-réseau IPv4 local (`/24` calculé sur les interfaces réseau) combinée à la diffusion globale `255.255.255.255`.
+    - Socket UDP `RawDatagramSocket.bind` avec `broadcastEnabled = true` émettant 3 salves espacées de 300 ms sur les ports standards 9 et 7, avec gestion d'erreurs try/catch et logs `[WakeOnLan]`.
+  - Interface utilisateur & saisie (`lib/screens/discovery_screen.dart`) :
+    - Section dédiée "Adresse MAC (allumage à distance)" intégrée sur le téléviseur sélectionné dans la liste.
+    - Validation du format hexadécimal à la saisie, normalisation automatique et sauvegarde immédiate dans le stockage persistant via `updateMacAddress`.
+    - Texte d'aide explicite : *"À trouver dans les paramètres réseau de la TV ou de votre box. Prenez l'adresse Wi-Fi."*
+  - Comportement intelligent du bouton Power (`lib/widgets/remote_button.dart` & `lib/screens/remote_screen.dart`) :
+    - Ajout du callback optionnel `onPressed` sur `RemoteButton`.
+    - Si connectée : envoi normal de la touche Power.
+    - Si hors ligne avec MAC : émission du paquet magique Wake-on-LAN, message *"Réveil de la TV…"*, et relance accélérée de la reconnexion toutes les 3s pendant 40 secondes max. Si la connexion s'établit, arrêt immédiat du cycle d'attente ; sinon, message d'avertissement *"La TV ne répond pas. Vérifiez que le réveil par réseau est activé dans ses paramètres."*
+    - Si hors ligne sans MAC : message *"Ajoutez l'adresse MAC de la TV pour pouvoir l'allumer"* avec bouton d'action ouvrant l'écran de découverte.
+  - Tests unitaires complets (`test/wake_on_lan_test.dart`) couvrant la validation, la normalisation, le masquage, la construction du paquet magique (102 octets) et la rétrocompatibilité JSON (31 tests au total, tous réussis).
+- État : fonctionne
+- À traiter : Test physique live d'allumage par paquet magique sur téléviseur en veille profonde (IP 192.168.1.64).
+
 ## [013] - Reconnexion automatique à la dernière TV et gestion du cycle de vie
 - Date : 2026-11-08
 - Demande : Reconnexion automatique à la dernière TV sélectionnée au lancement de l'application sans repasser par l'écran de découverte, mémorisation via `flutter_secure_storage` sans nouveau package, scan silencieux de secours (8s) en cas d'IP changée après 3 tentatives de reconnexion échouées, cycle de vie avec reconnexion au premier plan et coupure propre en arrière-plan prolongé via `WidgetsBindingObserver`, action "Oublier cette TV" dans l'écran de découverte avec confirmation obligatoire pour effacer la mémorisation et le certificat d'appairage, logs [AutoConnect] sans données sensibles, et ajout de la règle 12 dans les fichiers de règles du projet.
