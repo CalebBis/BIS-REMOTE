@@ -35,6 +35,12 @@ void main() {
     expect(find.text('0'), findsOneWidget);
     expect(find.text('5'), findsOneWidget);
 
+    // Vérifie la présence du bouton Supprimer avec son icône et son label sémantique
+    expect(find.byIcon(Icons.backspace_outlined), findsOneWidget);
+    expect(find.bySemanticsLabel('Supprimer'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.backspace_outlined));
+    await tester.pump();
+
     // 5. Vérifie la présence des boutons Muet et Texte
     expect(find.text('Muet'), findsOneWidget);
     expect(find.text('Texte'), findsOneWidget);

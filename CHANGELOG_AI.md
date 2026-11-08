@@ -1,5 +1,25 @@
 # Journal des modifications (CHANGELOG_AI)
 
+## [007] - Bouton supprimer du pavé numérique
+- Date : 2026-11-08
+- Demande : Ajout d'un bouton de suppression rond de 48 dp dans la case vide à gauche du 0 dans le pavé numérique (icône backspace_outlined, label sémantique "Supprimer", appel sendBackspace() avec retour haptique, et répétition continue toutes les 120 ms lors d'un appui long).
+- Fichiers créés : Aucun
+- Fichiers modifiés :
+  - `lib/widgets/numeric_keypad.dart`
+  - `test/widget_test.dart`
+  - `CHANGELOG_AI.md`
+- Fichiers supprimés : Aucun
+- Packages ajoutés : Aucun
+- Détail :
+  - Implémentation du composant `_BackspaceButton` (bouton rond de 48 dp avec le même style que les chiffres, icône `Icons.backspace_outlined` et accessibilité `Semantics(label: 'Supprimer')`).
+  - Positionnement à gauche du 0 sur la 4ème ligne de la grille, la case de droite restant vide afin de maintenir le 0 centré et la hauteur fixe de 240 dp inchangée.
+  - Déclenchement d'un retour haptique léger (`HapticFeedback.lightImpact()`) et appel de `tvController.sendBackspace()`.
+  - Prise en charge de la répétition continue automatique sur appui long toutes les 120 ms (après un délai initial de 400 ms) avec retour haptique à chaque répétition.
+  - Arrêt et nettoyage systématique des timers au relâchement (`onTapUp`), à l'annulation du geste (`onTapCancel`) et lors du `dispose()`.
+  - Mise à jour de `test/widget_test.dart` pour vérifier l'icône, le libellé sémantique et le déclenchement de la commande.
+- État : fonctionne
+- À traiter : Implémentation future de la découverte réseau Wi-Fi / mDNS et des protocoles réels de TV.
+
 ## [006] - Retrait de la capture flutter_01.png
 - Date : 2026-11-08
 - Demande : Retrait du suivi Git de flutter_01.png et ajout des règles d'exclusion des captures d'écran à la racine dans .gitignore.
