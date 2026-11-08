@@ -55,6 +55,18 @@ void main() {
       expect(payload[1], equals(0x0A));
     });
 
+    test('buildConfigurePayload échoue le code1 reçu de la TV (ex: 639)', () {
+      // Le protocole exige d'écho-er le code1 de la TV, pas d'envoyer 622 en dur.
+      final payloadWith639 = AndroidTvController.buildConfigurePayload(code1: 639);
+      final payloadWith622 = AndroidTvController.buildConfigurePayload(code1: 622);
+
+      // Les deux doivent avoir le même format structurel (tag 0x0A en position 1)
+      expect(payloadWith639[1], equals(0x0A));
+      expect(payloadWith622[1], equals(0x0A));
+      // Mais leurs octets doivent être différents (le code1 est encodé dedans)
+      expect(payloadWith639, isNot(equals(payloadWith622)));
+    });
+
     test('buildSetActivePayload encode le message remote_set_active', () {
       final payload = AndroidTvController.buildSetActivePayload(active: 622);
 
@@ -63,12 +75,29 @@ void main() {
       expect(payload[1], equals(0x12));
     });
 
+    test('buildSetActivePayload échoue la valeur active reçue de la TV', () {
+      // Le protocole exige d'écho-er la valeur active de la TV.
+      final payloadWith500 = AndroidTvController.buildSetActivePayload(active: 500);
+      final payloadWith622 = AndroidTvController.buildSetActivePayload(active: 622);
+
+      expect(payloadWith500[1], equals(0x12));
+      expect(payloadWith500, isNot(equals(payloadWith622)));
+    });
+
     test('buildPingResponsePayload encode le pong avec la valeur val1 reçue', () {
       final payload = AndroidTvController.buildPingResponsePayload(42);
 
       expect(payload.isNotEmpty, isTrue);
       // Tag de remote_ping_response = (9 << 3) | 2 = 74 = 0x4A
       expect(payload[1], equals(0x4A));
+    });
+
+    test('buildPingResponsePayload préserve la valeur du ping (echo fidèle)', () {
+      final pong42 = AndroidTvController.buildPingResponsePayload(42);
+      final pong99 = AndroidTvController.buildPingResponsePayload(99);
+
+      // Valeurs différentes → trames différentes
+      expect(pong42, isNot(equals(pong99)));
     });
   });
 
@@ -83,4 +112,17 @@ void main() {
       controller.dispose();
     });
   });
+
+  group('AndroidTvController - Nommage des types de messages', () {
+    test('messageTypeName retourne le bon nom pour chaque champ connu', () {
+      expect(AndroidTvController.messageTypeName(1), equals('remote_configure'));
+      expect(AndroidTvController.messageTypeName(2), equals('remote_set_active'));
+      expect(AndroidTvController.messageTypeName(3), equals('remote_error'));
+      expect(AndroidTvController.messageTypeName(8), equals('remote_ping_request'));
+      expect(AndroidTvController.messageTypeName(9), equals('remote_ping_response'));
+      expect(AndroidTvController.messageTypeName(10), equals('remote_key_inject'));
+      expect(AndroidTvController.messageTypeName(99), equals('unknown_99'));
+    });
+  });
 }
+

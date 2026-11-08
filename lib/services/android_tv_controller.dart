@@ -39,6 +39,13 @@ class AndroidTvController implements TvController {
   bool _isDisposed = false;
   bool _isConnecting = false;
 
+  /// Vrai dès que la connexion TLS est établie (SecureSocket.connect a réussi).
+  bool _tlsConnected = false;
+
+  /// Vrai uniquement après réception du remote_set_active de la TV
+  /// (session complètement activée, prête à recevoir des touches).
+  bool _handshakeDone = false;
+
   /// Capacités : aucun pointeur (le touchpad bascule en mode flèches de secours)
   /// et saisie de texte déportée absente tant qu'un support IME complet n'est pas actif.
   @override
@@ -71,10 +78,10 @@ class AndroidTvController implements TvController {
       );
 
       _isConnecting = false;
-      _reconnectAttempts = 0;
+      _tlsConnected = true;
       _reconnectTimer?.cancel();
       _reconnectTimer = null;
-      debugPrint('[AndroidTv] Connexion TLS établie sur le port $remotePort ($host:$remotePort).');
+      debugPrint('[AndroidTv] Connexion TLS établie sur le port $remotePort ($host:$remotePort). En attente du remote_configure de la TV...');
 
       _socketSub = _socket!.listen(
         _onSocketData,
@@ -88,16 +95,8 @@ class AndroidTvController implements TvController {
         },
       );
 
-      // 1. Envoi de la configuration initiale du client
-      final configPayload = buildConfigurePayload(code1: 622);
-      _sendRaw(configPayload);
-      debugPrint('[AndroidTv] Configuration initiale envoyée (code1: 622).');
-
-      // 2. Déclaration immédiate de session active
-      final activePayload = buildSetActivePayload(active: 622);
-      _sendRaw(activePayload);
-
-      _notifyState(AndroidTvConnectionState.connected);
+      // Protocole correct : on N'envoie RIEN ici.
+      // On attend le remote_configure de la TV (field 1) dans _handleSubMessage.
     } catch (e) {
       _isConnecting = false;
       _handleConnectionError(e);
@@ -125,6 +124,9 @@ class AndroidTvController implements TvController {
   }
 
   void _processRemoteMessage(Uint8List rawMsg) {
+    final hex = rawMsg.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    debugPrint('[AndroidTv] ← RX ${rawMsg.length}B [RemoteMessage] 0x$hex');
+
     int offset = 0;
     while (offset < rawMsg.length) {
       final tagResult = _decodeVarint(rawMsg, offset);
@@ -149,6 +151,7 @@ class AndroidTvController implements TvController {
         final valResult = _decodeVarint(rawMsg, offset);
         if (valResult == null) break;
         offset += valResult.bytesConsumed;
+        debugPrint('[AndroidTv]   field $fieldNumber (varint) = ${valResult.value}');
       } else {
         // Autre wire type non critique : arrêt du parcours
         break;
@@ -157,38 +160,89 @@ class AndroidTvController implements TvController {
   }
 
   void _handleSubMessage(int fieldNumber, Uint8List subMsg) {
+    final typeName = messageTypeName(fieldNumber);
+    final hex = subMsg.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    debugPrint('[AndroidTv]   field $fieldNumber [$typeName] ${subMsg.length}B 0x$hex');
+
     switch (fieldNumber) {
       case 1:
-        // remote_configure reçu de la TV
+        // remote_configure reçu de la TV : on répond avec le même code1
         final code1 = _parseFirstIntField(subMsg) ?? 622;
-        debugPrint('[AndroidTv] Reçu remote_configure de la TV (code1: $code1).');
+        debugPrint('[AndroidTv] ← RX remote_configure de la TV (code1: $code1). Envoi de notre remote_configure en écho.');
         _sendRaw(buildConfigurePayload(code1: code1));
-        _sendRaw(buildSetActivePayload(active: code1));
-        _notifyState(AndroidTvConnectionState.connected);
+        // On attend maintenant le remote_set_active de la TV (case 2).
         break;
 
       case 2:
-        // remote_set_active reçu de la TV
-        debugPrint('[AndroidTv] Reçu remote_set_active de la TV : session confirmée.');
-        _sendRaw(buildSetActivePayload(active: 622));
+        // remote_set_active reçu de la TV : on répond avec le même active, PUIS session active
+        final active = _parseFirstIntField(subMsg) ?? 622;
+        debugPrint('[AndroidTv] ← RX remote_set_active de la TV (active: $active). Envoi de notre remote_set_active en écho.');
+        _sendRaw(buildSetActivePayload(active: active));
+        // C'est MAINTENANT que la session est totalement active
+        _handshakeDone = true;
+        _reconnectAttempts = 0; // Reset du compteur uniquement après activation complète
         _notifyState(AndroidTvConnectionState.connected);
+        debugPrint('[AndroidTv] ✓ Session active. Télécommande opérationnelle.');
         break;
 
       case 8:
         // remote_ping_request reçu de la TV : réponse pong obligatoire
         final val1 = _parseFirstIntField(subMsg) ?? 0;
-        debugPrint('[AndroidTv] Reçu ping (val1: $val1), envoi de la réponse pong.');
+        debugPrint('[AndroidTv] ← RX remote_ping_request (val1: $val1) → envoi pong.');
         _sendRaw(buildPingResponsePayload(val1));
         break;
 
       case 3:
-        // remote_error
-        debugPrint('[AndroidTv] Message d\'erreur reçu de la TV.');
+        // remote_error : décodage de tous les champs pour diagnostic
+        debugPrint('[AndroidTv] ← RX remote_error. Décodage des champs :');
+        _decodeAndLogAllFields(subMsg);
         break;
 
       default:
         // Autre message informatif ignoré sans erreur
         break;
+    }
+  }
+
+  /// Retourne le nom du type de message pour les logs (visible pour les tests).
+  static String messageTypeName(int fieldNumber) {
+    switch (fieldNumber) {
+      case 1: return 'remote_configure';
+      case 2: return 'remote_set_active';
+      case 3: return 'remote_error';
+      case 8: return 'remote_ping_request';
+      case 9: return 'remote_ping_response';
+      case 10: return 'remote_key_inject';
+      default: return 'unknown_$fieldNumber';
+    }
+  }
+
+  /// Décode et journalise tous les champs d'un sous-message (pour remote_error).
+  void _decodeAndLogAllFields(Uint8List bytes) {
+    int offset = 0;
+    while (offset < bytes.length) {
+      final tagResult = _decodeVarint(bytes, offset);
+      if (tagResult == null) break;
+      offset += tagResult.bytesConsumed;
+      final fieldNumber = tagResult.value >> 3;
+      final wireType = tagResult.value & 0x07;
+
+      if (wireType == 0) {
+        final valResult = _decodeVarint(bytes, offset);
+        if (valResult == null) break;
+        offset += valResult.bytesConsumed;
+        debugPrint('[AndroidTv]   erreur field $fieldNumber (varint) = ${valResult.value}');
+      } else if (wireType == 2) {
+        final lenResult = _decodeVarint(bytes, offset);
+        if (lenResult == null) break;
+        offset += lenResult.bytesConsumed;
+        final sub = bytes.sublist(offset, offset + lenResult.value);
+        offset += lenResult.value;
+        final hex = sub.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+        debugPrint('[AndroidTv]   erreur field $fieldNumber (bytes) = 0x$hex');
+      } else {
+        break;
+      }
     }
   }
 
@@ -216,20 +270,26 @@ class AndroidTvController implements TvController {
   }
 
   void _handleConnectionError(Object error) {
+    final wasTlsConnected = _tlsConnected;
+    final wasHandshakeDone = _handshakeDone;
     _cleanupSocket();
 
     String messageFr;
-    if (error is SocketException) {
-      messageFr = 'TV éteinte ou injoignable sur le réseau local ($host)';
-    } else if (error is TimeoutException) {
-      messageFr = 'Délai d\'attente dépassé pour $host (TV occupée ou éteinte)';
+    if (!wasTlsConnected) {
+      // La connexion TLS elle-même a échoué → TV hors ligne / éteinte
+      messageFr = 'TV hors ligne ou éteinte ($host)';
     } else if (error is HandshakeException || error.toString().toLowerCase().contains('certificate')) {
       messageFr = 'Certificat client refusé par la TV ($host) : réappairage nécessaire';
+    } else if (!wasHandshakeDone) {
+      // TLS OK mais handshake protocolaire incomplet (remote_error ou déconnexion pendant le handshake)
+      messageFr = 'Connexion refusée par la TV – erreur de protocole ($host)';
+    } else if (error is TimeoutException) {
+      messageFr = 'Délai d\'attente dépassé pour $host (TV occupée ou éteinte)';
     } else {
-      messageFr = 'Liaison interrompue avec la TV ($error)';
+      messageFr = 'Liaison interrompue avec la TV ($host)';
     }
 
-    debugPrint('[AndroidTv] $messageFr');
+    debugPrint('[AndroidTv] ✗ $messageFr (détail : $error)');
     _notifyState(AndroidTvConnectionState.offline);
     _scheduleReconnect();
   }
@@ -255,6 +315,8 @@ class AndroidTvController implements TvController {
   void _sendRaw(Uint8List payload) {
     if (_socket == null) return;
     try {
+      final hex = payload.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      debugPrint('[AndroidTv] → TX ${payload.length}B 0x$hex');
       _socket!.add(payload);
     } catch (e) {
       debugPrint('[AndroidTv] Erreur transmission socket : $e');
@@ -263,6 +325,8 @@ class AndroidTvController implements TvController {
   }
 
   void _cleanupSocket() {
+    _tlsConnected = false;
+    _handshakeDone = false;
     _socketSub?.cancel();
     _socketSub = null;
     try {

@@ -1,5 +1,32 @@
 # Journal des modifications (CHANGELOG_AI)
 
+## [012] - Correction du protocole Android TV Remote v2
+- Date : 2026-11-08
+- Demande : Corriger le bug de connexion TLS sur port 6466 où la TV fermait la connexion après avoir reçu un message d'erreur. Diagnostiquer les trames, aligner l'ordre des messages sur tronikos/androidtvremote2 (attendre `remote_configure` de la TV avant d'envoyer la configuration client en écho, puis attendre `remote_set_active` avant de répondre et de déclarer la session active), journaliser les trames hexadécimales et décoder les champs d'erreur, corriger le message "TV éteinte" erroné lorsque TLS est établi mais que le protocole échoue, et ne réinitialiser le compteur de reconnexion qu'après l'activation complète confirmée.
+- Fichiers créés : Aucun
+- Fichiers modifiés :
+  - `lib/services/android_tv_controller.dart`
+  - `test/android_tv_controller_test.dart`
+  - `CHANGELOG_AI.md`
+- Fichiers supprimés : Aucun
+- Packages ajoutés : Aucun
+- Détail :
+  - Diagnostic et cause racine identifiés :
+    - `AndroidTvController` émettait `RemoteConfigure` et `RemoteSetActive` de manière proactive immédiatement à l'ouverture de la socket TLS, avec un `code1: 622` hardcodé et sans attendre la TV.
+    - Selon la référence `tronikos/androidtvremote2`, la TV prend l'initiative et envoie son propre `remote_configure` (contenant son `code1`, ex: 639). Le client doit attendre ce message, lui répondre en renvoyant le même `code1` en écho, puis attendre le `remote_set_active` de la TV avant d'y répondre et de marquer la session active.
+    - L'émission immédiate proactive provoquait un message `remote_error` de la TV suivi de la fermeture de la connexion.
+    - Le flag d'état était marqué `connected` dès la connexion TLS, et le compteur de reconnexion remis à 0 prématurément.
+  - Corrections apportées dans `AndroidTvController` :
+    - Séquencement réactif strict : suppression de tout envoi proactif dans `connect()`. Le client écoute la socket TLS et attend le `remote_configure` de la TV.
+    - Écho de `code1` : `_handleSubMessage` (case 1) extrait le `code1` envoyé par la TV et émet `buildConfigurePayload(code1: code1)` en écho sans forcer l'état `connected`.
+    - Activation de session (case 2) : à réception de `remote_set_active`, le contrôleur répond par `buildSetActivePayload(active: active)`, marque `_handshakeDone = true`, réinitialise le compteur de reconnexion, et notifie enfin l'état `connected`.
+    - Télémétrie et logs sécurisés : ajout des logs hexadécimaux pour toutes les trames émises (`→ TX`) et reçues (`← RX`), nommage automatique des champs (`messageTypeName`), et décodage exhaustif des sous-champs de `remote_error` sans aucune exposition de secret.
+    - Messages d'erreur fidèles : distinction entre échec de connexion TCP/TLS (`TV hors ligne ou éteinte`), erreur de handshake protocolaire (`Connexion refusée par la TV – erreur de protocole`), timeout, et certificat refusé.
+    - Backoff exponentiel effectif (1s, 2s, 4s, 8s, 16s, 30s) conservé sans reset intempestif avant confirmation d'activation.
+  - Tests unitaires étendus : validation de l'écho de `code1` (639 vs 622), de la valeur `active`, et de la méthode `messageTypeName`.
+- État : fonctionne
+- À traiter : Validation en direct sur la TV Android physique (192.168.1.64).
+
 ## [011] - Implémentation du contrôleur AndroidTvController (Étape 1B)
 - Date : 2026-11-08
 - Demande : Implémenter AndroidTvController (implements TvController) avec connexion TLS persistante sur port 6466 utilisant le certificat client stocké, respect du protocole officiel tronikos/androidtvremote2 (configuration initiale, activation, réponses ping/pong, envoi des touches), mapping complet des touches RemoteKey vers les Android KeyCodes (power, d-pad, volume, muet, chaînes, 0-9, médias, DEL pour backspace), sélection automatique du contrôleur dans Riverpod selon l'état d'appairage, gestion des capacités (pas de pointer, saisie de texte absente), reconnexion automatique avec backoff exponentiel et messages d'erreur en français sans crash, et logs [AndroidTv] sécurisés.
