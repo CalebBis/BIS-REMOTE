@@ -29,6 +29,7 @@ alwaysApply: true
 10. Ne fais JAMAIS de `git push` sans que je te le demande explicitement. Ne fais jamais de `--force`, de `reset --hard` ni de suppression de branche sans mon accord.
 11. Ne commite jamais de clé, de token, de mot de passe ni de fichier .env.
 12. Dans le RAPPORT DE PASSATION, l'arborescence de lib/ doit venir d'une commande réelle (dir lib /s /b) exécutée juste avant le rapport, jamais de mémoire. Indique aussi le résultat de `git --no-pager show --stat HEAD`.
+13. Quand une modification touche au dossier android/ (manifeste, ressources, gradle) ou à pubspec.yaml, exécute `flutter build apk --debug` avant de rendre le rapport et colle la fin de la sortie.
 
 ## Format de CHANGELOG_AI.md
 Une entrée par modification, la plus récente en haut :

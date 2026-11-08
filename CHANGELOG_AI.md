@@ -1,5 +1,27 @@
 # Journal des modifications (CHANGELOG_AI)
 
+## [017] - Correction du fond de l'écran de démarrage Android
+- Date : 2026-11-08
+- Demande : Corriger l'erreur de build Android "AAPT: '#FF111418' is incompatible with attribute drawable (attr) reference" causée par l'utilisation d'un littéral de couleur dans `android:drawable`. Référencer une couleur nommée via `@color/`. Ajouter la règle 13 aux deux fichiers de règles.
+- Fichiers créés : Aucun
+- Fichiers modifiés :
+  - `android/app/src/main/res/values/colors.xml` (ajout de `launch_background_color`)
+  - `android/app/src/main/res/drawable/launch_background.xml` (remplacement du littéral par `@color/launch_background_color`)
+  - `android/app/src/main/res/drawable-v21/launch_background.xml` (idem)
+  - `.agent/rules/project-rules.md` (ajout règle 13)
+  - `PROJECT_RULES.md` (ajout règle 13)
+  - `CHANGELOG_AI.md`
+- Fichiers supprimés : Aucun
+- Packages ajoutés : Aucun
+- Détail :
+  - L'erreur AAPT venait du fait qu'Android ne permet pas un littéral `#AARRGGBB` directement dans l'attribut `android:drawable` d'un `<item>` de `<layer-list>`. La valeur `#FF111418` avait été posée directement dans les deux fichiers `launch_background.xml` lors de [015].
+  - Ajout de `<color name="launch_background_color">#111418</color>` dans `colors.xml` (la couleur `ic_launcher_background` existante a été conservée).
+  - Remplacement de `android:drawable="#FF111418"` par `android:drawable="@color/launch_background_color"` dans les deux fichiers XML.
+  - Ajout de la règle 13 dans `.agent/rules/project-rules.md` et `PROJECT_RULES.md` : obligation d'exécuter `flutter build apk --debug` avant tout rapport touchant `android/` ou `pubspec.yaml`.
+  - Build vérifié réellement : `flutter build apk --debug` avec `JAVA_HOME=C:\Program Files\Java\jdk-21` → **BUILD SUCCESSFUL in 8m 18s**, 143 actionable tasks: 28 executed, 115 up-to-date.
+- État : fonctionne
+- À traiter : Le JDK par défaut du système est JDK 26 (incompatible avec le plugin Kotlin Gradle). Pour les builds futurs, utiliser `JAVA_HOME=C:\Program Files\Java\jdk-21`.
+
 ## [016] - Nettoyage du doublon d'icône et clarification des modes
 - Date : 2026-11-08
 - Demande : Nettoyage après [015] sans toucher au code : suppression du doublon `assets/icon/Gemini_Generated_Image_csgslcsgslcsgslc.png` avec `git rm` après vérification de l'égalité de hash SHA256 avec `assets/icon/icon.png`, vérification du contenu brut de `lib/models/remote_mode.dart` pour confirmer les noms exacts des modes (`navigation`, `touchpad`, `numeric`), correction de la description dans la documentation, vérification des dimensions de `icon.png` (1024x1024), journal [016], commit local et rapport de passation.
