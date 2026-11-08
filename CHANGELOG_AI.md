@@ -1,5 +1,42 @@
 # Journal des modifications (CHANGELOG_AI)
 
+## [009] - Appairage et connexion Android TV (Étape 1A)
+- Date : 2026-11-08
+- Demande : Implémenter l'appairage Android TV via protocole POLO (port 6467 TLS) avec génération de certificat client X.509 auto-signé, stockage sécurisé, calcul SHA-256 avec checksum, dialogue de saisie du PIN, test de connexion sur port 6466, et mise à jour du bandeau d'état.
+- Fichiers créés :
+  - `lib/services/android_tv_pairing_service.dart`
+  - `test/android_tv_pairing_test.dart`
+- Fichiers modifiés :
+  - `lib/services/tv_discovery_provider.dart`
+  - `lib/screens/discovery_screen.dart`
+  - `pubspec.yaml`, `pubspec.lock`
+  - `CHANGELOG_AI.md`
+- Fichiers supprimés : Aucun
+- Packages ajoutés :
+  - `crypto: ^3.0.8` : Calcul SHA-256 du secret d'appairage POLO selon l'algorithme officiel de référence (tronikos/androidtvremote2).
+  - `flutter_secure_storage: ^10.3.4` : Stockage sécurisé du certificat client PEM, de la clé privée et du statut d'appairage par IP dans Android Keystore / EncryptedSharedPreferences.
+  - `basic_utils: ^5.8.2` (licence MIT) : Génération de paire de clés RSA 2048 bits et certificat X.509 auto-signé (`CN=atvremote`).
+- Détail :
+  - Choix technique validé (option b) : implémentation maison du protocole POLO sur port TLS 6467 avec certificat client sans validation CA serveur (`badCertificateCallback`).
+  - Implémentation complète de `AndroidTvPairingService` :
+    - Génération et persistance sécurisée du certificat client et de sa clé privée RSA 2048 (`flutter_secure_storage`).
+    - Protocole POLO implémenté avec encodeur/décodeur protobuf varint minimaliste : séquence `PairingRequest` -> `PairingRequestAck` -> `Options` -> `Configuration` -> `ConfigurationAck` -> `Secret` -> `SecretAck`.
+    - Calcul du secret SHA-256 conforme à la source de référence Home Assistant (`tronikos/androidtvremote2`) : concaténation `client_modulus` + `client_exponent` + `server_modulus` + `server_exponent` + `pin[2:]`.
+    - Validation locale immédiate du PIN : comparaison des 2 premiers caractères hexadécimaux avec le premier octet du hash SHA-256.
+    - Test de connexion sur le port télécommande 6466 avec le certificat client après succès d'appairage.
+    - Journalisation console `[AndroidTv]` sans jamais exposer de clé privée, certificat ou PIN.
+  - Intégration Riverpod (`tv_discovery_provider.dart`) :
+    - `androidTvPairingServiceProvider` : provider pour le service d'appairage.
+    - `androidTvConnectionStateProvider` : état réactif de la liaison Android TV (`AndroidTvConnectionState`).
+    - `tvConnectionStatusProvider` mis à jour pour afficher dynamiquement `Non appairée`, `Appairée`, `Connectée` ou `Hors ligne` pour les Android TV sélectionnées.
+  - Interface utilisateur (`discovery_screen.dart`) :
+    - Interception du clic sur une Android TV : si non appairée, affichage d'un dialogue modal d'appairage avec saisie du code PIN hexadécimal à 6 caractères affiché sur la TV.
+    - État d'avancement clair dans le dialogue (connexion, attente du PIN, vérification, succès, erreurs/injoignable).
+    - Test de connexion en arrière-plan sur le port 6466 à l'issue de l'appairage.
+  - Tests unitaires (`test/android_tv_pairing_test.dart`) vérifiant le calcul SHA-256 et la validation du checksum de PIN.
+- État : fonctionne
+- À traiter : Étape 1B (envoi des touches sur port 6466 via `AndroidTvController`), surveiller `minSdk` Android (flutter_secure_storage préconise minSdk 23).
+
 ## [008] - Découverte réseau des téléviseurs (SSDP, mDNS et ajout manuel par IP)
 - Date : 2026-11-08
 - Demande : Ajout de la découverte des téléviseurs sur le réseau Wi-Fi local via SSDP et mDNS, écran de recherche (DiscoveryScreen) avec sélection de la TV active et ajout manuel par IP (Plan B), permissions Android et MulticastLock natif via MethodChannel, et bandeau d'en-tête principal cliquable.

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/discovered_tv.dart';
+import '../services/android_tv_pairing_service.dart';
 import '../services/tv_discovery_provider.dart';
 import '../services/tv_discovery_service.dart';
 
@@ -99,18 +100,336 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen> {
     });
   }
 
-  void _selectTv(DiscoveredTv tv) {
+  void _selectTv(DiscoveredTv tv) async {
     HapticFeedback.lightImpact();
-    ref.read(selectedTvProvider.notifier).selectTv(tv);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Téléviseur sélectionné : ${tv.name}'),
-        backgroundColor: const Color(0xFF00525A),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-    Navigator.of(context).pop();
+
+    if (tv.brand == TvBrand.androidTv) {
+      // Pour une Android TV : vérifier si déjà appairée
+      final pairingService = ref.read(androidTvPairingServiceProvider);
+      final isPaired = await pairingService.isTvPaired(tv.ip);
+
+      if (!mounted) return;
+
+      ref.read(selectedTvProvider.notifier).selectTv(tv);
+
+      if (isPaired) {
+        // Déjà appairée : tester le port 6466 pour le statut
+        ref.read(androidTvConnectionStateProvider.notifier).set(
+          AndroidTvConnectionState.paired,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${tv.name} sélectionnée (appairée)'),
+            backgroundColor: const Color(0xFF00525A),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        // Test de connexion en arrière-plan
+        pairingService.testRemotePortConnection(tv.ip).then((state) {
+          if (mounted) {
+            ref.read(androidTvConnectionStateProvider.notifier).set(state);
+          }
+        });
+        Navigator.of(context).pop();
+      } else {
+        // Pas encore appairée : ouvrir le dialogue d'appairage
+        ref.read(androidTvConnectionStateProvider.notifier).set(
+          AndroidTvConnectionState.unpaired,
+        );
+        await _openPairingDialog(tv, pairingService);
+      }
+    } else {
+      ref.read(selectedTvProvider.notifier).selectTv(tv);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Téléviseur sélectionné : ${tv.name}'),
+          backgroundColor: const Color(0xFF00525A),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      Navigator.of(context).pop();
+    }
   }
+
+  Future<void> _openPairingDialog(DiscoveredTv tv, AndroidTvPairingService pairingService) async {
+    final pinController = TextEditingController();
+    PairingStepStatus status = PairingStepStatus.idle;
+    String statusMessage = '';
+    bool isPinPhase = false;
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            Future<void> startPairing() async {
+              setDialogState(() {
+                status = PairingStepStatus.connecting;
+                statusMessage = 'Connexion à ${tv.ip}…';
+              });
+              try {
+                await pairingService.startPairing(
+                  host: tv.ip,
+                  onStatusChanged: (s, msg) {
+                    if (!ctx.mounted) return;
+                    setDialogState(() {
+                      status = s;
+                      statusMessage = msg;
+                      if (s == PairingStepStatus.waitingForPin) {
+                        isPinPhase = true;
+                      }
+                    });
+                  },
+                );
+              } catch (_) {}
+            }
+
+            Future<void> submitPin() async {
+              final pin = pinController.text.trim().toUpperCase();
+              final success = await pairingService.submitPin(
+                host: tv.ip,
+                pin: pin,
+                onStatusChanged: (s, msg) {
+                  if (!ctx.mounted) return;
+                  setDialogState(() {
+                    status = s;
+                    statusMessage = msg;
+                  });
+                },
+              );
+              if (!ctx.mounted) return;
+              if (success) {
+                Navigator.of(ctx).pop(true);
+              }
+            }
+
+            // Auto-démarrage lors de l'ouverture du dialogue
+            if (status == PairingStepStatus.idle) {
+              WidgetsBinding.instance.addPostFrameCallback((_) => startPairing());
+            }
+
+            final isLoading = status == PairingStepStatus.connecting ||
+                status == PairingStepStatus.verifyingPin;
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1B2223),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: Row(
+                children: [
+                  const Icon(Icons.live_tv_rounded, color: Color(0xFF00C8F0), size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Appairage Android TV',
+                      style: const TextStyle(
+                        color: Color(0xFFE3E8E8),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 17,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      tv.name,
+                      style: const TextStyle(
+                        color: Color(0xFF8E999A),
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      tv.ip,
+                      style: const TextStyle(
+                        color: Color(0xFF555F61),
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Statut
+                    if (statusMessage.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _statusBgColor(status),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Row(
+                          children: [
+                            if (isLoading)
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00C8F0)),
+                                ),
+                              )
+                            else
+                              Icon(_statusIcon(status), size: 16, color: _statusIconColor(status)),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                statusMessage,
+                                style: TextStyle(
+                                  color: _statusTextColor(status),
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    // Champ PIN (uniquement en phase de saisie)
+                    if (isPinPhase) ...[
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Code affiché sur votre TV (6 caractères hex)\nexemple : A3F2B1',
+                        style: TextStyle(color: Color(0xFF8E999A), fontSize: 12, height: 1.4),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: pinController,
+                        autofocus: true,
+                        maxLength: 6,
+                        textCapitalization: TextCapitalization.characters,
+                        style: const TextStyle(
+                          color: Color(0xFFE3E8E8),
+                          letterSpacing: 4,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'A3F2B1',
+                          hintStyle: const TextStyle(
+                            color: Color(0xFF555F61),
+                            letterSpacing: 4,
+                          ),
+                          counterText: '',
+                          filled: true,
+                          fillColor: const Color(0xFF262D2E),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide.none,
+                          ),
+                          errorText: status == PairingStepStatus.invalidPin
+                              ? statusMessage
+                              : null,
+                          errorMaxLines: 2,
+                        ),
+                        onSubmitted: (_) => submitPin(),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'[0-9A-Fa-f]')),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    pairingService.closePairing();
+                    Navigator.of(ctx).pop(false);
+                  },
+                  child: const Text('Annuler', style: TextStyle(color: Color(0xFF8E999A))),
+                ),
+                if (isPinPhase && !isLoading)
+                  ElevatedButton(
+                    onPressed: submitPin,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00C8F0),
+                      foregroundColor: const Color(0xFF111418),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: const Text('Valider', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                if (status == PairingStepStatus.unreachable || status == PairingStepStatus.error)
+                  ElevatedButton(
+                    onPressed: startPairing,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF262D2E),
+                      foregroundColor: const Color(0xFFE3E8E8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: const Text('Réessayer'),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (!mounted) return;
+    if (result == true) {
+      ref.read(androidTvConnectionStateProvider.notifier).set(
+        AndroidTvConnectionState.paired,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${tv.name} appairée avec succès !'),
+          backgroundColor: const Color(0xFF00525A),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      // Test du port 6466 en arrière-plan
+      pairingService.testRemotePortConnection(tv.ip).then((state) {
+        if (mounted) {
+          ref.read(androidTvConnectionStateProvider.notifier).set(state);
+        }
+      });
+      Navigator.of(context).pop();
+    }
+  }
+
+  static Color _statusBgColor(PairingStepStatus s) => switch (s) {
+        PairingStepStatus.success => const Color(0xFF1A3A2F),
+        PairingStepStatus.invalidPin ||
+        PairingStepStatus.unreachable ||
+        PairingStepStatus.error =>
+          const Color(0xFF3A1A1A),
+        _ => const Color(0xFF262D2E),
+      };
+
+  static IconData _statusIcon(PairingStepStatus s) => switch (s) {
+        PairingStepStatus.success => Icons.check_circle_rounded,
+        PairingStepStatus.invalidPin ||
+        PairingStepStatus.unreachable ||
+        PairingStepStatus.error =>
+          Icons.error_outline_rounded,
+        PairingStepStatus.waitingForPin => Icons.lock_outline_rounded,
+        _ => Icons.info_outline_rounded,
+      };
+
+  static Color _statusIconColor(PairingStepStatus s) => switch (s) {
+        PairingStepStatus.success => const Color(0xFF00C87A),
+        PairingStepStatus.invalidPin ||
+        PairingStepStatus.unreachable ||
+        PairingStepStatus.error =>
+          const Color(0xFFE53935),
+        PairingStepStatus.waitingForPin => const Color(0xFF00C8F0),
+        _ => const Color(0xFF8E999A),
+      };
+
+  static Color _statusTextColor(PairingStepStatus s) => switch (s) {
+        PairingStepStatus.success => const Color(0xFF00C87A),
+        PairingStepStatus.invalidPin ||
+        PairingStepStatus.unreachable ||
+        PairingStepStatus.error =>
+          const Color(0xFFE57373),
+        PairingStepStatus.waitingForPin => const Color(0xFF00C8F0),
+        _ => const Color(0xFF8E999A),
+      };
 
   void _openManualAddDialog() {
     final ipController = TextEditingController();
