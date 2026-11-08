@@ -1,5 +1,39 @@
 # Journal des modifications (CHANGELOG_AI)
 
+## [008] - Découverte réseau des téléviseurs (SSDP, mDNS et ajout manuel par IP)
+- Date : 2026-11-08
+- Demande : Ajout de la découverte des téléviseurs sur le réseau Wi-Fi local via SSDP et mDNS, écran de recherche (DiscoveryScreen) avec sélection de la TV active et ajout manuel par IP (Plan B), permissions Android et MulticastLock natif via MethodChannel, et bandeau d'en-tête principal cliquable.
+- Fichiers créés :
+  - `lib/models/discovered_tv.dart`
+  - `lib/services/tv_discovery_service.dart`
+  - `lib/services/tv_discovery_provider.dart`
+  - `lib/screens/discovery_screen.dart`
+- Fichiers modifiés :
+  - `android/app/src/main/AndroidManifest.xml`
+  - `android/app/src/main/kotlin/com/bis/bis_remote/MainActivity.kt`
+  - `lib/services/tv_controller.dart`
+  - `lib/widgets/status_banner.dart`
+  - `pubspec.yaml`, `pubspec.lock`
+  - `test/widget_test.dart`
+  - `CHANGELOG_AI.md`
+- Fichiers supprimés : Aucun
+- Packages ajoutés :
+  - `multicast_dns: ^0.3.3` : Nécessaire pour décoder et requêter de manière fiable les enregistrements DNS-SD / mDNS (`_androidtvremote2._tcp`, `_googlecast._tcp`, résolution PTR, SRV, A et TXT).
+- Détail :
+  - Modèle : `DiscoveredTv` (nom, ip, marque `TvBrand`, port, location, extraInfo) et énumération `TvBrand` (samsung, lg, sony, androidTv, roku, unknown).
+  - Code natif Android & MulticastLock : Sur Android, le Wi-Fi filtre par défaut les paquets multicast UDP pour économiser la batterie. Dans `MainActivity.kt`, un MethodChannel (`com.bis.bis_remote/multicast`) gère `acquireMulticastLock` et `releaseMulticastLock` via `WifiManager.createMulticastLock("BisRemoteMulticastLock")`. Le verrou n'est maintenu que pendant la durée du scan (8 secondes maximum).
+  - Service `TvDiscoveryService` :
+    - SSDP : Envoi de requêtes UDP M-SEARCH (`239.255.255.250:1900`) vers `ssdp:all`, `urn:dial-multiscreen-org:service:dial:1` et `roku:ecp`. Analyse des en-têtes `SERVER`, `ST`, `USN`, `LOCATION`, déduction de la marque et téléchargement HTTP court du document de description XML pour extraire `friendlyName` et `manufacturer`.
+    - mDNS : Résolution des cibles Android TV et Google Cast via `multicast_dns` pour obtenir l'IP et le nom d'affichage.
+    - Déduplication : Les téléviseurs sont identifiés par leur IP et enrichis au fur et à mesure sans doublons, sur un scan de 8 secondes annulable.
+    - Logs détaillés émis dans la console terminal pour chaque paquet reçu et marque déduite.
+  - Écran `DiscoveryScreen` : Scan automatique au lancement si le Wi-Fi est actif, détection du Wi-Fi non connecté avec message d'avertissement, indicateur de chargement, état vide explicite, et sélection d'une TV qui met à jour le provider `selectedTvProvider`.
+  - Ajout manuel par IP : Formulaire modal avec validation rigoureuse de l'adresse IPv4, nom facultatif et sélecteur de marque, enregistrant la TV comme sélection active.
+  - Écran principal : Le bandeau `StatusBanner` devient cliquable pour naviguer vers `DiscoveryScreen`, et affiche dynamiquement la TV sélectionnée (ex: "Samsung TV (192.168.1.50)").
+  - Tests : Mise à jour de `test/widget_test.dart` validant l'ouverture de l'écran de découverte, l'ajout manuel par IP et la répercussion dans le bandeau principal.
+- État : fonctionne
+- À traiter : Implémentation des protocoles de pilotage réels (WebSocket Samsung Tizen, LG webOS, Android TV Pairing).
+
 ## [007] - Bouton supprimer du pavé numérique
 - Date : 2026-11-08
 - Demande : Ajout d'un bouton de suppression rond de 48 dp dans la case vide à gauche du 0 dans le pavé numérique (icône backspace_outlined, label sémantique "Supprimer", appel sendBackspace() avec retour haptique, et répétition continue toutes les 120 ms lors d'un appui long).

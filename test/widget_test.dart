@@ -53,5 +53,33 @@ void main() {
 
     expect(find.text('Saisir sur la TV'), findsOneWidget);
     expect(find.text('Envoyer'), findsOneWidget);
+
+    // Fermeture du bottom sheet
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pumpAndSettle();
+
+    // 7. Test d'ouverture de l'écran de découverte via le bandeau
+    await tester.tap(find.text('Aucune TV connectée'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Recherche de téléviseurs'), findsOneWidget);
+    expect(find.text('Par IP'), findsOneWidget);
+
+    // Test de l'ajout manuel par IP
+    await tester.tap(find.text('Par IP'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ajouter par adresse IP'), findsOneWidget);
+
+    // Saisie de l'adresse IP et validation
+    final ipField = find.byType(TextField).first;
+    await tester.enterText(ipField, '192.168.1.50');
+    await tester.pump();
+
+    await tester.tap(find.text('Sélectionner'));
+    await tester.pumpAndSettle();
+
+    // Retour sur l'écran principal : le bandeau affiche désormais la TV sélectionnée
+    expect(find.text('Samsung TV (192.168.1.50)'), findsOneWidget);
   });
 }

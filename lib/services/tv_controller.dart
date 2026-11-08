@@ -4,6 +4,7 @@ import '../models/remote_key.dart';
 import '../models/tv_capability.dart';
 
 export 'remote_mode_provider.dart';
+export 'tv_discovery_provider.dart';
 
 /// Contrat d'interface abstrait pour le pilotage d'un téléviseur.
 abstract class TvController {
@@ -83,9 +84,4 @@ class MockTvController implements TvController {
 /// Fournisseur Riverpod pour l'instance active de [TvController].
 final tvControllerProvider = Provider<TvController>((ref) {
   return MockTvController();
-});
-
-/// État du téléviseur actuellement sélectionné / connecté.
-final tvConnectionStatusProvider = Provider<String>((ref) {
-  return 'Aucune TV connectée';
 });
