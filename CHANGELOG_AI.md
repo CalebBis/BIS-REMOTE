@@ -1,5 +1,22 @@
 # Journal des modifications (CHANGELOG_AI)
 
+## [010] - Correction du dialogue d'appairage Android TV
+- Date : 2026-11-08
+- Demande : Corriger deux défauts dans lib/screens/discovery_screen.dart sans toucher au reste : (1) contenu du dialogue d'appairage qui déborde lors de l'ouverture du clavier virtuel ("BOTTOM OVERFLOWED BY 34 PIXELS") en rendant le contenu scrollable via SingleChildScrollView tout en maintenant le design au-dessus du clavier ; (2) éliminer le doublon d'affichage "Android TV TV" lorsque le nom ou la marque contient déjà "TV" ou est égal au nom de marque, et conserver un nom lisible tel quel (ex: "Mediatek_MTXXXX").
+- Fichiers créés : Aucun
+- Fichiers modifiés :
+  - `lib/screens/discovery_screen.dart`
+  - `test/android_tv_pairing_test.dart`
+  - `CHANGELOG_AI.md`
+- Fichiers supprimés : Aucun
+- Packages ajoutés : Aucun
+- Détail :
+  - Résolution de l'overflow clavier : inclusion d'un `SingleChildScrollView` dans le `content` de l'`AlertDialog` d'appairage. Le dialogue s'ajuste dynamiquement au-dessus du clavier virtuel (`MediaQuery.viewInsets`) sans déborder lors de la frappe du code PIN hexadécimal à 6 caractères, en conservant les dimensions et styles Material 3 d'origine.
+  - Déduplication et formatage du nom TV (`DiscoveryScreen.formatTvName`) : suppression des doublons "TV TV" (`RegExp(r'\bTV\s+TV\b')`), prévention de l'ajout automatique de "TV" dans l'ajout manuel si la marque se termine déjà par "TV" (ex: "Android TV"), et extraction automatique d'un nom d'instance mDNS parlant (ex: "Mediatek_MTXXXX") si le nom reçu était purement générique.
+  - Ajout de tests unitaires dédiés dans `test/android_tv_pairing_test.dart` validant les cas "Android TV TV" -> "Android TV", "Mediatek_MTXXXX" préservé tel quel, et résolution depuis l'instance mDNS.
+- État : fonctionne
+- À traiter : Étape 1B (envoi des touches sur port 6466 via `AndroidTvController`).
+
 ## [009] - Appairage et connexion Android TV (Étape 1A)
 - Date : 2026-11-08
 - Demande : Implémenter l'appairage Android TV via protocole POLO (port 6467 TLS) avec génération de certificat client X.509 auto-signé, stockage sécurisé, calcul SHA-256 avec checksum, dialogue de saisie du PIN, test de connexion sur port 6466, et mise à jour du bandeau d'état.

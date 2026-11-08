@@ -11,6 +11,46 @@ import '../services/tv_discovery_service.dart';
 class DiscoveryScreen extends ConsumerStatefulWidget {
   const DiscoveryScreen({super.key});
 
+  /// Formate et nettoie le nom affiché d'un téléviseur :
+  /// - Évite les doublons comme "Android TV TV" lorsque le nom ou la marque contient déjà "TV"
+  /// - Conserve les noms lisibles non génériques (ex: "Mediatek_MTXXXX")
+  /// - Si le nom reçu est générique (ex: "Android TV", "Téléviseur"), tente d'extraire un nom d'hôte ou d'instance mDNS plus parlant.
+  static String formatTvName(DiscoveredTv tv) {
+    String name = tv.name.trim();
+
+    // 1. Élimine les doublons de "TV TV" (insensible à la casse)
+    name = name.replaceAll(RegExp(r'\bTV\s+TV\b', caseSensitive: false), 'TV').trim();
+    if (RegExp(r'TV\s+TV$', caseSensitive: false).hasMatch(name)) {
+      name = name.replaceFirst(RegExp(r'\s+TV$', caseSensitive: false), '').trim();
+    }
+
+    // 2. Si le nom est générique ou égal au nom de marque, tente d'extraire un nom d'hôte / modèle
+    final isGeneric = name == 'Android TV' ||
+        name == 'Téléviseur' ||
+        name == tv.brand.displayName ||
+        name.startsWith('Android TV (');
+
+    if (isGeneric && tv.extraInfo != null) {
+      final domain = tv.extraInfo!['domain'];
+      if (domain != null && domain.isNotEmpty) {
+        // En mDNS, le format est <NomInstance>._service._tcp.local
+        final firstPart = domain.split('._').first;
+        final cleanInstance = firstPart.replaceAll(RegExp(r'\.local\.?$'), '').trim();
+        if (cleanInstance.isNotEmpty &&
+            !cleanInstance.startsWith('_') &&
+            cleanInstance.toLowerCase() != 'android tv') {
+          return cleanInstance;
+        }
+      }
+      final manufacturer = tv.extraInfo!['Manufacturer'];
+      if (manufacturer != null && manufacturer.isNotEmpty) {
+        return '$manufacturer ${tv.brand.displayName}';
+      }
+    }
+
+    return name;
+  }
+
   @override
   ConsumerState<DiscoveryScreen> createState() => _DiscoveryScreenState();
 }
@@ -103,14 +143,17 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen> {
   void _selectTv(DiscoveredTv tv) async {
     HapticFeedback.lightImpact();
 
-    if (tv.brand == TvBrand.androidTv) {
+    final formattedName = _formatTvName(tv);
+    final tvToUse = formattedName != tv.name ? tv.copyWith(name: formattedName) : tv;
+
+    if (tvToUse.brand == TvBrand.androidTv) {
       // Pour une Android TV : vérifier si déjà appairée
       final pairingService = ref.read(androidTvPairingServiceProvider);
-      final isPaired = await pairingService.isTvPaired(tv.ip);
+      final isPaired = await pairingService.isTvPaired(tvToUse.ip);
 
       if (!mounted) return;
 
-      ref.read(selectedTvProvider.notifier).selectTv(tv);
+      ref.read(selectedTvProvider.notifier).selectTv(tvToUse);
 
       if (isPaired) {
         // Déjà appairée : tester le port 6466 pour le statut
@@ -119,13 +162,13 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen> {
         );
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${tv.name} sélectionnée (appairée)'),
+            content: Text('${tvToUse.name} sélectionnée (appairée)'),
             backgroundColor: const Color(0xFF00525A),
             duration: const Duration(seconds: 2),
           ),
         );
         // Test de connexion en arrière-plan
-        pairingService.testRemotePortConnection(tv.ip).then((state) {
+        pairingService.testRemotePortConnection(tvToUse.ip).then((state) {
           if (mounted) {
             ref.read(androidTvConnectionStateProvider.notifier).set(state);
           }
@@ -136,13 +179,13 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen> {
         ref.read(androidTvConnectionStateProvider.notifier).set(
           AndroidTvConnectionState.unpaired,
         );
-        await _openPairingDialog(tv, pairingService);
+        await _openPairingDialog(tvToUse, pairingService);
       }
     } else {
-      ref.read(selectedTvProvider.notifier).selectTv(tv);
+      ref.read(selectedTvProvider.notifier).selectTv(tvToUse);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Téléviseur sélectionné : ${tv.name}'),
+          content: Text('Téléviseur sélectionné : ${tvToUse.name}'),
           backgroundColor: const Color(0xFF00525A),
           duration: const Duration(seconds: 2),
         ),
@@ -233,106 +276,108 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen> {
               ),
               content: SizedBox(
                 width: double.maxFinite,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      tv.name,
-                      style: const TextStyle(
-                        color: Color(0xFF8E999A),
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      tv.ip,
-                      style: const TextStyle(
-                        color: Color(0xFF555F61),
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Statut
-                    if (statusMessage.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: _statusBgColor(status),
-                          borderRadius: BorderRadius.circular(14),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        _formatTvName(tv),
+                        style: const TextStyle(
+                          color: Color(0xFF8E999A),
+                          fontSize: 13,
                         ),
-                        child: Row(
-                          children: [
-                            if (isLoading)
-                              const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00C8F0)),
-                                ),
-                              )
-                            else
-                              Icon(_statusIcon(status), size: 16, color: _statusIconColor(status)),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                statusMessage,
-                                style: TextStyle(
-                                  color: _statusTextColor(status),
-                                  fontSize: 13,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        tv.ip,
+                        style: const TextStyle(
+                          color: Color(0xFF555F61),
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Statut
+                      if (statusMessage.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: _statusBgColor(status),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(
+                            children: [
+                              if (isLoading)
+                                const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00C8F0)),
+                                  ),
+                                )
+                              else
+                                Icon(_statusIcon(status), size: 16, color: _statusIconColor(status)),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  statusMessage,
+                                  style: TextStyle(
+                                    color: _statusTextColor(status),
+                                    fontSize: 13,
+                                  ),
                                 ),
                               ),
+                            ],
+                          ),
+                        ),
+
+                      // Champ PIN (uniquement en phase de saisie)
+                      if (isPinPhase) ...[
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Code affiché sur votre TV (6 caractères hex)\nexemple : A3F2B1',
+                          style: TextStyle(color: Color(0xFF8E999A), fontSize: 12, height: 1.4),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: pinController,
+                          autofocus: true,
+                          maxLength: 6,
+                          textCapitalization: TextCapitalization.characters,
+                          style: const TextStyle(
+                            color: Color(0xFFE3E8E8),
+                            letterSpacing: 4,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 20,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'A3F2B1',
+                            hintStyle: const TextStyle(
+                              color: Color(0xFF555F61),
+                              letterSpacing: 4,
                             ),
+                            counterText: '',
+                            filled: true,
+                            fillColor: const Color(0xFF262D2E),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide.none,
+                            ),
+                            errorText: status == PairingStepStatus.invalidPin
+                                ? statusMessage
+                                : null,
+                            errorMaxLines: 2,
+                          ),
+                          onSubmitted: (_) => submitPin(),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(RegExp(r'[0-9A-Fa-f]')),
                           ],
                         ),
-                      ),
-
-                    // Champ PIN (uniquement en phase de saisie)
-                    if (isPinPhase) ...[
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Code affiché sur votre TV (6 caractères hex)\nexemple : A3F2B1',
-                        style: TextStyle(color: Color(0xFF8E999A), fontSize: 12, height: 1.4),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: pinController,
-                        autofocus: true,
-                        maxLength: 6,
-                        textCapitalization: TextCapitalization.characters,
-                        style: const TextStyle(
-                          color: Color(0xFFE3E8E8),
-                          letterSpacing: 4,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20,
-                        ),
-                        decoration: InputDecoration(
-                          hintText: 'A3F2B1',
-                          hintStyle: const TextStyle(
-                            color: Color(0xFF555F61),
-                            letterSpacing: 4,
-                          ),
-                          counterText: '',
-                          filled: true,
-                          fillColor: const Color(0xFF262D2E),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
-                          ),
-                          errorText: status == PairingStepStatus.invalidPin
-                              ? statusMessage
-                              : null,
-                          errorMaxLines: 2,
-                        ),
-                        onSubmitted: (_) => submitPin(),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(r'[0-9A-Fa-f]')),
-                        ],
-                      ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
               actions: [
@@ -377,7 +422,7 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen> {
       );
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${tv.name} appairée avec succès !'),
+          content: Text('${_formatTvName(tv)} appairée avec succès !'),
           backgroundColor: const Color(0xFF00525A),
           duration: const Duration(seconds: 3),
         ),
@@ -430,6 +475,8 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen> {
         PairingStepStatus.waitingForPin => const Color(0xFF00C8F0),
         _ => const Color(0xFF8E999A),
       };
+
+  static String _formatTvName(DiscoveredTv tv) => DiscoveryScreen.formatTvName(tv);
 
   void _openManualAddDialog() {
     final ipController = TextEditingController();
@@ -575,10 +622,15 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen> {
                       return;
                     }
 
+                    final brandName = selectedBrand.displayName;
+                    final defaultName = brandName.toLowerCase().contains('tv')
+                        ? brandName
+                        : '$brandName TV';
+
                     final name = nameController.text.trim().isNotEmpty
                         ? nameController.text.trim()
                         : (selectedBrand != TvBrand.unknown
-                            ? '${selectedBrand.displayName} TV'
+                            ? defaultName
                             : 'Téléviseur');
 
                     final manualTv = DiscoveredTv(
@@ -899,7 +951,7 @@ class _DiscoveredTvTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        tv.name,
+                        DiscoveryScreen.formatTvName(tv),
                         style: const TextStyle(
                           color: Color(0xFFE3E8E8),
                           fontSize: 15,

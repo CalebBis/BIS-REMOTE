@@ -1,3 +1,5 @@
+import 'package:bis_remote/models/discovered_tv.dart';
+import 'package:bis_remote/screens/discovery_screen.dart';
 import 'package:bis_remote/services/android_tv_pairing_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -39,6 +41,33 @@ void main() {
   test('Encodage et décodage des messages POLO Protobuf', () {
     final service = AndroidTvPairingService();
     expect(service, isNotNull);
+  });
+
+  test('Nettoyage et formatage du nom TV (évite Android TV TV)', () {
+    // 1. Élimination du doublon "TV TV"
+    const tvDuplicate = DiscoveredTv(
+      name: 'Android TV TV',
+      ip: '192.168.1.64',
+      brand: TvBrand.androidTv,
+    );
+    expect(DiscoveryScreen.formatTvName(tvDuplicate), equals('Android TV'));
+
+    // 2. Nom spécifique conservé tel quel
+    const tvSpecific = DiscoveredTv(
+      name: 'Mediatek_MTXXXX',
+      ip: '192.168.1.64',
+      brand: TvBrand.androidTv,
+    );
+    expect(DiscoveryScreen.formatTvName(tvSpecific), equals('Mediatek_MTXXXX'));
+
+    // 3. Nom générique avec instance mDNS
+    const tvMdns = DiscoveredTv(
+      name: 'Android TV',
+      ip: '192.168.1.64',
+      brand: TvBrand.androidTv,
+      extraInfo: {'domain': 'Mediatek_MTXXXX._androidtvremote2._tcp.local.'},
+    );
+    expect(DiscoveryScreen.formatTvName(tvMdns), equals('Mediatek_MTXXXX'));
   });
 }
 
