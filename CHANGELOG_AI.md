@@ -1,5 +1,27 @@
 # Journal des modifications (CHANGELOG_AI)
 
+## [005] - Initialisation Git et règles de versionnage
+- Date : 2026-11-08
+- Demande : Initialisation du versionnage Git du projet, liaison avec le dépôt distant GitHub (https://github.com/CalebBis/BIS-REMOTE.git), premier push sur main, et intégration des règles permanentes de gestion de versions.
+- Fichiers créés : Aucun (dépôt Git initialisé)
+- Fichiers modifiés :
+  - `.agent/rules/project-rules.md`
+  - `PROJECT_RULES.md`
+  - `AGENTS.md`
+  - `.gemini/rules.md`
+  - `CHANGELOG_AI.md`
+- Fichiers supprimés : Aucun
+- Packages ajoutés : Aucun
+- Détail :
+  - Vérification de l'installation de Git (`git version 2.49.0.windows.1`) et de l'identité Git (`Biselengecaleb <thekhakidbis@gmail.com>`).
+  - Initialisation de la branche `main` (`git init -b main`).
+  - Sécurisation du `.gitignore` pour exclure tout fichier d'environnement ou certificat (`.env`, `*.jks`, `*.keystore`, `key.properties`, `google-services.json`).
+  - Validation préalable avec l'utilisateur et création du commit initial `ee6e555` ("Initial commit : interface télécommande, modes de contrôle et saisie de texte [004]").
+  - Ajout du remote `origin` (`https://github.com/CalebBis/BIS-REMOTE.git`), vérification que le dépôt distant était vide via `git ls-remote`, puis premier push `git push -u origin main`.
+  - Ajout des règles de travail 9, 10 et 11 (commit local systématique en fin de tâche, interdiction de push ou de force/reset sans demande explicite, interdiction absolue de commiter des secrets).
+- État : fonctionne
+- À traiter : Prochaine tâche de développement (découverte réseau Wi-Fi / protocoles TV).
+
 ## [004] - Ajout des modes de contrôle (Navigation, Touchpad, Chiffres) et de la saisie de texte
 - Date : 2026-11-08
 - Demande : Ajout de trois modes de contrôle interchangeables dans une zone centrale fixe de 240 dp (Navigation D-Pad, Touchpad tactile avec gestes/fallback, Pavé numérique 0-9), sélecteur de mode animé sous forme de pill à 3 segments, intégration de la saisie de texte déportée via bottom sheet au-dessus du clavier virtuel, réorganisation de la ligne Volume/Muet+Texte/Chaînes et ajustement des contrôles média selon la maquette validée.

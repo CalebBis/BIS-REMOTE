@@ -19,6 +19,9 @@
 6. APRÈS chaque modification, tu ajoutes une entrée dans `CHANGELOG_AI.md` (voir format ci-dessous). Une tâche n'est pas terminée tant que le journal n'est pas à jour.
 7. Si tu découvres un bug ou un problème hors du sujet demandé, tu le signales dans le journal (section "À traiter") au lieu de le corriger de ton propre chef.
 8. À la fin de CHAQUE tâche, après avoir mis à jour `CHANGELOG_AI.md`, tu m'écris un "RAPPORT DE PASSATION" dans le chat, en suivant exactement le format défini dans la section "Format du rapport de passation". Une tâche n'est pas terminée sans ce rapport.
+9. Après chaque tâche terminée (analyze propre, journal à jour), fais un commit local avec le message '[numéro du journal] Titre court'.
+10. Ne fais JAMAIS de `git push` sans que je te le demande explicitement. Ne fais jamais de `--force`, de `reset --hard` ni de suppression de branche sans mon accord.
+11. Ne commite jamais de clé, de token, de mot de passe ni de fichier .env.
 
 ## Format de CHANGELOG_AI.md
 Une entrée par modification, la plus récente en haut :
