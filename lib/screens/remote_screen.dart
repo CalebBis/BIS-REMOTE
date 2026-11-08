@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/discovered_tv.dart';
 import '../models/remote_key.dart';
 import '../models/remote_mode.dart';
-import '../services/remote_mode_provider.dart';
+import '../services/android_tv_pairing_service.dart';
+import '../services/tv_controller.dart';
 import '../widgets/dpad_widget.dart';
 import '../widgets/mode_selector.dart';
 import '../widgets/numeric_keypad.dart';
@@ -20,11 +22,54 @@ import '../widgets/volume_channel_controls.dart';
 /// 4. Sélecteur de mode centré (46 dp)
 /// 5. Ligne unique Volume / Muet + Texte / Chaînes
 /// 6. Contrôles média (Précédent 60 dp, Play/Pause 84 dp, Suivant 60 dp)
-class RemoteScreen extends ConsumerWidget {
+class RemoteScreen extends ConsumerStatefulWidget {
   const RemoteScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RemoteScreen> createState() => _RemoteScreenState();
+}
+
+class _RemoteScreenState extends ConsumerState<RemoteScreen> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    Future.microtask(() {
+      ref.read(selectedTvProvider.notifier).loadSavedTv();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final selectedTv = ref.read(selectedTvProvider);
+    if (selectedTv == null) return;
+
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('[AutoConnect] Reprise au premier plan (resumed). Vérification de la connexion...');
+      final connState = ref.read(androidTvConnectionStateProvider);
+      if (selectedTv.brand == TvBrand.androidTv && connState != AndroidTvConnectionState.connected) {
+        debugPrint('[AutoConnect] Reconnexion automatique à ${selectedTv.ip}...');
+        ref.invalidate(androidTvControllerProvider(selectedTv.ip));
+      }
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      debugPrint('[AutoConnect] Passage en arrière-plan prolongé ($state). Fermeture propre de la connexion...');
+      if (selectedTv.brand == TvBrand.androidTv) {
+        try {
+          final controller = ref.read(androidTvControllerProvider(selectedTv.ip));
+          controller.disconnect();
+        } catch (_) {}
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final mode = ref.watch(remoteModeProvider);
 
     return Scaffold(

@@ -16,6 +16,7 @@ class AndroidTvController implements TvController {
     required this.host,
     required this.pairingService,
     this.onStateChanged,
+    this.onReconnectFailed,
   });
 
   /// Adresse IP du téléviseur.
@@ -26,6 +27,9 @@ class AndroidTvController implements TvController {
 
   /// Callback de notification des changements d'état de connexion.
   final void Function(AndroidTvConnectionState state)? onStateChanged;
+
+  /// Callback appelé lors d'un échec de reconnexion avec le numéro de tentative.
+  final void Function(int attempts)? onReconnectFailed;
 
   /// Port TLS standard du service de télécommande Android TV Remote v2.
   static const int remotePort = 6466;
@@ -305,12 +309,27 @@ class AndroidTvController implements TvController {
 
     _reconnectAttempts++;
     debugPrint('[AndroidTv] Tentative de reconnexion dans ${delay.inSeconds}s (essai #$_reconnectAttempts)...');
+    onReconnectFailed?.call(_reconnectAttempts);
     _reconnectTimer = Timer(delay, () {
       if (!_isDisposed) {
         connect();
       }
     });
   }
+
+  /// Déconnecte proprement la socket TLS sans disposer définitivement le contrôleur
+  /// (pour mise en veille prolongée ou passage en arrière-plan).
+  void disconnect() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _cleanupSocket();
+    _isConnecting = false;
+    _notifyState(AndroidTvConnectionState.offline);
+    debugPrint('[AutoConnect] Connexion Android TV fermée proprement en arrière-plan.');
+  }
+
+  /// Indique si la liaison est actuellement active et prête.
+  bool get isConnected => _socket != null && _handshakeDone;
 
   void _sendRaw(Uint8List payload) {
     if (_socket == null) return;

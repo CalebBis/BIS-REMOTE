@@ -77,6 +77,33 @@ class DiscoveredTv {
   /// Résumé affiché dans le bandeau principal.
   String get summary => '$name ($ip)';
 
+  /// Convertit l'instance en Map pour la sérialisation JSON.
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'ip': ip,
+        'brand': brand.name,
+        'port': port,
+        'location': location,
+        'extraInfo': extraInfo,
+      };
+
+  /// Reconstruit une instance à partir d'un Map JSON.
+  factory DiscoveredTv.fromJson(Map<String, dynamic> json) {
+    return DiscoveredTv(
+      name: json['name'] as String? ?? 'TV inconnue',
+      ip: json['ip'] as String? ?? '',
+      brand: TvBrand.values.firstWhere(
+        (b) => b.name == json['brand'],
+        orElse: () => TvBrand.unknown,
+      ),
+      port: json['port'] as int?,
+      location: json['location'] as String?,
+      extraInfo: json['extraInfo'] != null
+          ? Map<String, String>.from(json['extraInfo'] as Map)
+          : null,
+    );
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

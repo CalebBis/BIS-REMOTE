@@ -82,6 +82,39 @@ class AndroidTvPairingService {
     }
   }
 
+  /// Oublie un téléviseur : supprime son statut d'appairage et
+  /// ses certificats d'appairage pour réinitialiser la liaison.
+  Future<void> unpairTv(String ip, {bool clearCertificates = true}) async {
+    try {
+      await _storage.delete(key: '$_pairedPrefix$ip');
+      if (clearCertificates) {
+        await _storage.delete(key: _certKey);
+        await _storage.delete(key: _privKeyKey);
+        _clientCertPem = null;
+        _clientKeyPem = null;
+        _clientPublicKey = null;
+      }
+      debugPrint('[AutoConnect] Téléviseur $ip oublié (appairage et certificat supprimés).');
+    } catch (e) {
+      debugPrint('[AndroidTv] Erreur lors de l\'oubli du téléviseur $ip: $e');
+    }
+  }
+
+  /// Transfère l'état d'appairage d'une ancienne IP vers une nouvelle IP
+  /// (en cas de changement d'IP DHCP de la TV).
+  Future<void> transferPairing(String oldIp, String newIp) async {
+    try {
+      final wasPaired = await isTvPaired(oldIp);
+      if (wasPaired) {
+        await setTvPaired(newIp, true);
+        await setTvPaired(oldIp, false);
+        debugPrint('[AutoConnect] Appairage transféré avec succès de $oldIp vers $newIp.');
+      }
+    } catch (e) {
+      debugPrint('[AutoConnect] Erreur lors du transfert d\'appairage : $e');
+    }
+  }
+
   /// Charge le certificat client et sa clé privée depuis le stockage sécurisé,
   /// ou les génère s'ils n'existent pas encore.
   Future<void> initializeCredentials() async {

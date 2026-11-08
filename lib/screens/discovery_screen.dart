@@ -65,6 +65,10 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen> {
   @override
   void initState() {
     super.initState();
+    final selected = ref.read(selectedTvProvider);
+    if (selected != null && !_discoveredTvs.any((t) => t.ip == selected.ip)) {
+      _discoveredTvs.add(selected);
+    }
     _checkWifiAndAutoScan();
   }
 
@@ -131,6 +135,87 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen> {
         });
       },
     );
+  }
+
+  Future<void> _confirmForgetTv(DiscoveredTv tv) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1B2223),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: Row(
+            children: const [
+              Icon(Icons.delete_outline_rounded, color: Color(0xFFE53935)),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Oublier cette TV ?',
+                  style: TextStyle(
+                    color: Color(0xFFE3E8E8),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'Voulez-vous vraiment oublier "${DiscoveryScreen.formatTvName(tv)}" (${tv.ip}) ?\n\n'
+            'Cette action effacera la TV mémorisée ainsi que son certificat d\'appairage.',
+            style: const TextStyle(
+              color: Color(0xFF8E999A),
+              fontSize: 14,
+              height: 1.4,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(false),
+              child: const Text(
+                'Annuler',
+                style: TextStyle(color: Color(0xFF8E999A)),
+              ),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFE53935),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.of(dialogCtx).pop(true),
+              child: const Text('Oublier'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true && mounted) {
+      HapticFeedback.mediumImpact();
+      final currentSelected = ref.read(selectedTvProvider);
+      if (currentSelected?.ip == tv.ip) {
+        await ref.read(selectedTvProvider.notifier).clearSelection();
+        ref.read(androidTvConnectionStateProvider.notifier).set(null);
+      }
+      final pairingService = ref.read(androidTvPairingServiceProvider);
+      await pairingService.unpairTv(tv.ip, clearCertificates: true);
+
+      setState(() {
+        _discoveredTvs.removeWhere((t) => t.ip == tv.ip);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${DiscoveryScreen.formatTvName(tv)} oubliée.'),
+            backgroundColor: const Color(0xFF00525A),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   void _stopScan() {
@@ -862,6 +947,8 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen> {
                       tv: tv,
                       isSelected: currentSelected?.ip == tv.ip,
                       onTap: () => _selectTv(tv),
+                      onLongPress: () => _confirmForgetTv(tv),
+                      onForget: () => _confirmForgetTv(tv),
                     ),
                 ],
               ),
@@ -878,11 +965,15 @@ class _DiscoveredTvTile extends StatelessWidget {
     required this.tv,
     required this.isSelected,
     required this.onTap,
+    this.onLongPress,
+    this.onForget,
   });
 
   final DiscoveredTv tv;
   final bool isSelected;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final VoidCallback? onForget;
 
   IconData _getBrandIcon(TvBrand brand) {
     switch (brand) {
@@ -922,6 +1013,7 @@ class _DiscoveredTvTile extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
+          onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(20),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -992,15 +1084,26 @@ class _DiscoveredTvTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                Icon(
-                  isSelected
-                      ? Icons.check_circle_rounded
-                      : Icons.arrow_forward_ios_rounded,
-                  color: isSelected
-                      ? const Color(0xFF00C8F0)
-                      : const Color(0xFF555F61),
-                  size: isSelected ? 24 : 16,
-                ),
+                if (isSelected && onForget != null)
+                  IconButton(
+                    icon: const Icon(
+                      Icons.delete_outline_rounded,
+                      color: Color(0xFFE53935),
+                      size: 22,
+                    ),
+                    tooltip: 'Oublier cette TV',
+                    onPressed: onForget,
+                  )
+                else
+                  Icon(
+                    isSelected
+                        ? Icons.check_circle_rounded
+                        : Icons.arrow_forward_ios_rounded,
+                    color: isSelected
+                        ? const Color(0xFF00C8F0)
+                        : const Color(0xFF555F61),
+                    size: isSelected ? 24 : 16,
+                  ),
               ],
             ),
           ),

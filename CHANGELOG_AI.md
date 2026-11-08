@@ -1,5 +1,45 @@
 # Journal des modifications (CHANGELOG_AI)
 
+## [013] - Reconnexion automatique à la dernière TV et gestion du cycle de vie
+- Date : 2026-11-08
+- Demande : Reconnexion automatique à la dernière TV sélectionnée au lancement de l'application sans repasser par l'écran de découverte, mémorisation via `flutter_secure_storage` sans nouveau package, scan silencieux de secours (8s) en cas d'IP changée après 3 tentatives de reconnexion échouées, cycle de vie avec reconnexion au premier plan et coupure propre en arrière-plan prolongé via `WidgetsBindingObserver`, action "Oublier cette TV" dans l'écran de découverte avec confirmation obligatoire pour effacer la mémorisation et le certificat d'appairage, logs [AutoConnect] sans données sensibles, et ajout de la règle 12 dans les fichiers de règles du projet.
+- Fichiers créés :
+  - `test/auto_connect_test.dart`
+- Fichiers modifiés :
+  - `.agent/rules/project-rules.md`
+  - `PROJECT_RULES.md`
+  - `lib/models/discovered_tv.dart`
+  - `lib/services/tv_discovery_provider.dart`
+  - `lib/services/tv_controller.dart`
+  - `lib/services/android_tv_controller.dart`
+  - `lib/services/android_tv_pairing_service.dart`
+  - `lib/screens/remote_screen.dart`
+  - `lib/screens/discovery_screen.dart`
+  - `CHANGELOG_AI.md`
+- Fichiers supprimés : Aucun
+- Packages ajoutés : Aucun
+- Détail :
+  - Règle 12 ajoutée aux règles permanentes du projet (`.agent/rules/project-rules.md` et `PROJECT_RULES.md`).
+  - Mémorisation locale sécurisée (`flutter_secure_storage`) :
+    - Ajout des méthodes de sérialisation `toJson()` et `fromJson()` sur le modèle `DiscoveredTv`.
+    - `SelectedTvNotifier` stocke automatiquement le JSON du téléviseur sous la clé `last_selected_tv` lors d'une sélection (scan ou ajout manuel).
+    - `loadSavedTv()` restaure la TV au démarrage et déclenche la connexion immédiate dans Riverpod sans bloquer l'interface.
+  - Scan de secours automatique sur changement d'IP :
+    - `AutoConnectNotifier` intercepte les échecs consécutifs (`onReconnectFailed`).
+    - Au bout de 3 tentatives infructueuses, lancement d'un scan silencieux unique de 8 secondes (`TvDiscoveryService.scanTvs`).
+    - Si la TV est retrouvée sur le réseau à une nouvelle adresse IP (même nom ou même marque), mise à jour automatique de l'IP mémorisée (`updateTvIp`), transfert transparent de l'état d'appairage (`AndroidTvPairingService.transferPairing`) et reconnexion automatique.
+    - Pas de boucle infinie de scans : si non trouvée, le bandeau reste "hors ligne" et invite à ouvrir l'écran de découverte.
+  - Cycle de vie applicatif (`WidgetsBindingObserver` dans `RemoteScreen`) :
+    - `resumed` : vérification de l'état de liaison et reconnexion automatique si la connexion est tombée.
+    - `paused` / `hidden` : fermeture propre de la connexion TLS (`AndroidTvController.disconnect()`) pour préserver la batterie et libérer les sockets réseau.
+  - Action "Oublier cette TV" dans `DiscoveryScreen` :
+    - Disponible via un appui long sur n'importe quel téléviseur de la liste ou via l'icône poubelle dédiée sur la TV actuellement sélectionnée.
+    - `AlertDialog` de confirmation obligatoire avant toute suppression : efface la mémorisation sécurisée, révoque le certificat d'appairage (`unpairTv`), et réinitialise la sélection.
+  - Télémétrie et logs dédiés avec préfixe `[AutoConnect]` sans fuite de clés ni de secrets.
+  - Tests unitaires complets (`test/auto_connect_test.dart`) couvrant la sérialisation, la persistance `FlutterSecureStorage`, l'oubli et le transfert d'appairage (22 tests au total, tous réussis).
+- État : fonctionne
+- À traiter : Test physique live sur TV réelle en veille / réveil et changement DHCP.
+
 ## [012] - Correction du protocole Android TV Remote v2
 - Date : 2026-11-08
 - Demande : Corriger le bug de connexion TLS sur port 6466 où la TV fermait la connexion après avoir reçu un message d'erreur. Diagnostiquer les trames, aligner l'ordre des messages sur tronikos/androidtvremote2 (attendre `remote_configure` de la TV avant d'envoyer la configuration client en écho, puis attendre `remote_set_active` avant de répondre et de déclarer la session active), journaliser les trames hexadécimales et décoder les champs d'erreur, corriger le message "TV éteinte" erroné lorsque TLS est établi mais que le protocole échoue, et ne réinitialiser le compteur de reconnexion qu'après l'activation complète confirmée.

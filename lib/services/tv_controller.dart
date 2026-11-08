@@ -95,6 +95,12 @@ final androidTvControllerProvider =
     pairingService: pairingService,
     onStateChanged: (state) {
       ref.read(androidTvConnectionStateProvider.notifier).set(state);
+      if (state == AndroidTvConnectionState.connected) {
+        ref.read(autoConnectNotifierProvider.notifier).resetFailureFlags();
+      }
+    },
+    onReconnectFailed: (attempts) {
+      ref.read(autoConnectNotifierProvider.notifier).handleReconnectAttempt(attempts);
     },
   );
 
