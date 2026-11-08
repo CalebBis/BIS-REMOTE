@@ -23,6 +23,7 @@ enum PairingStepStatus {
 enum AndroidTvConnectionState {
   unpaired,
   paired,
+  connecting,
   connected,
   offline,
 }
@@ -133,6 +134,12 @@ class AndroidTvPairingService {
     context.useCertificateChainBytes(utf8.encode(_clientCertPem!));
     context.usePrivateKeyBytes(utf8.encode(_clientKeyPem!));
     return context;
+  }
+
+  /// Initialise les identifiants si nécessaire et retourne un `SecurityContext` TLS configuré.
+  Future<SecurityContext> createSecurityContext() async {
+    await initializeCredentials();
+    return _buildSecurityContext();
   }
 
   /// Démarre le processus d'appairage avec la TV sur le port 6467.

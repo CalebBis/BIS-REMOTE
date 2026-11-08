@@ -1,5 +1,35 @@
 # Journal des modifications (CHANGELOG_AI)
 
+## [011] - Implémentation du contrôleur AndroidTvController (Étape 1B)
+- Date : 2026-11-08
+- Demande : Implémenter AndroidTvController (implements TvController) avec connexion TLS persistante sur port 6466 utilisant le certificat client stocké, respect du protocole officiel tronikos/androidtvremote2 (configuration initiale, activation, réponses ping/pong, envoi des touches), mapping complet des touches RemoteKey vers les Android KeyCodes (power, d-pad, volume, muet, chaînes, 0-9, médias, DEL pour backspace), sélection automatique du contrôleur dans Riverpod selon l'état d'appairage, gestion des capacités (pas de pointer, saisie de texte absente), reconnexion automatique avec backoff exponentiel et messages d'erreur en français sans crash, et logs [AndroidTv] sécurisés.
+- Fichiers créés :
+  - `lib/services/android_tv_controller.dart`
+  - `test/android_tv_controller_test.dart`
+- Fichiers modifiés :
+  - `lib/services/android_tv_pairing_service.dart`
+  - `lib/services/tv_controller.dart`
+  - `lib/services/tv_discovery_provider.dart`
+  - `CHANGELOG_AI.md`
+- Fichiers supprimés : Aucun
+- Packages ajoutés : Aucun
+- Détail :
+  - Implémentation complète de `AndroidTvController` :
+    - Connexion TLS persistante sur le port 6466 avec le certificat client X.509 et sa clé privée RSA 2048 (`AndroidTvPairingService.createSecurityContext()`).
+    - Handshake protocolaire v2 conforme à `tronikos/androidtvremote2` : émission immédiate de `RemoteConfigure` (`code1: 622`, `device_info: atvremote`) et `RemoteSetActive` (`active: 622`), traitement des configurations TV et réponses systématiques `RemotePingResponse` aux requêtes heartbeat `RemotePingRequest`.
+    - Mapping intégral des touches `RemoteKey` vers les KeyCodes Android : power (26), d-pad haut/bas/gauche/droite/centre (19, 20, 21, 22, 23), retour (4), accueil (3), menu (82), volume +/- (24, 25), muet (164), chaîne +/- (166, 167), chiffres 0 à 9 (7 à 16), lecture/pause (85), précédent (88), suivant (87), et suppression DEL (67) pour `sendBackspace()`.
+    - Transmission en trames Protobuf varint-délimitées `RemoteKeyInject` (field 10) avec `RemoteDirection.SHORT = 3`.
+    - Capacités : `capabilities => const {}` (aucun pointeur : bascule automatique du pavé tactile en mode flèches de secours ; absence de saisie de texte : le bottom sheet affiche son message d'incompatibilité).
+    - Robustesse réseau : reconnexion automatique avec délai croissant (1s, 2s, 4s, 8s, 16s, 30s max), messages d'erreur explicites en français (TV éteinte, délai dépassé, certificat refusé) sans crash, et fermeture propre via `dispose()`.
+    - Logs sécurisés avec préfixe `[AndroidTv]` sans aucune fuite de certificat, clé ou code.
+  - Intégration Riverpod :
+    - `androidTvControllerProvider` (family autoDispose) instancie et connecte le contrôleur par hôte.
+    - `tvControllerProvider` fournit dynamiquement `AndroidTvController` si une TV de marque `androidTv` appairée est sélectionnée, sinon `MockTvController`.
+    - `tvConnectionStatusProvider` et `androidTvConnectionStateProvider` gèrent les états `connexion…`, `connectée`, `hors ligne`, `appairée`, `non appairée`.
+  - Tests unitaires (`test/android_tv_controller_test.dart`) couvrant le mapping des touches, l'encodage de chaque type de message Protobuf, et les capacités.
+- État : fonctionne
+- À traiter : Test sur appareil réel avec TV Android physique connectée au réseau.
+
 ## [010] - Correction du dialogue d'appairage Android TV
 - Date : 2026-11-08
 - Demande : Corriger deux défauts dans lib/screens/discovery_screen.dart sans toucher au reste : (1) contenu du dialogue d'appairage qui déborde lors de l'ouverture du clavier virtuel ("BOTTOM OVERFLOWED BY 34 PIXELS") en rendant le contenu scrollable via SingleChildScrollView tout en maintenant le design au-dessus du clavier ; (2) éliminer le doublon d'affichage "Android TV TV" lorsque le nom ou la marque contient déjà "TV" ou est égal au nom de marque, et conserver un nom lisible tel quel (ex: "Mediatek_MTXXXX").

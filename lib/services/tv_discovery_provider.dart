@@ -54,11 +54,12 @@ final tvConnectionStatusProvider = Provider<String>((ref) {
   if (selectedTv.brand == TvBrand.androidTv) {
     final atv = ref.watch(androidTvConnectionStateProvider);
     final label = switch (atv) {
-      AndroidTvConnectionState.unpaired => 'non appairée',
-      AndroidTvConnectionState.paired => 'appairée',
+      AndroidTvConnectionState.connecting => 'connexion…',
       AndroidTvConnectionState.connected => 'connectée',
       AndroidTvConnectionState.offline => 'hors ligne',
-      null => 'Android TV',
+      AndroidTvConnectionState.unpaired => 'non appairée',
+      AndroidTvConnectionState.paired => 'appairée',
+      null => 'connexion…',
     };
     return '${selectedTv.name} · $label';
   }

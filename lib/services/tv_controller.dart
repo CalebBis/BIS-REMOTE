@@ -1,8 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/discovered_tv.dart';
 import '../models/remote_key.dart';
 import '../models/tv_capability.dart';
+import 'android_tv_controller.dart';
+import 'android_tv_pairing_service.dart';
+import 'tv_discovery_provider.dart';
 
+export 'android_tv_controller.dart';
 export 'remote_mode_provider.dart';
 export 'tv_discovery_provider.dart';
 
@@ -81,7 +86,35 @@ class MockTvController implements TvController {
   }
 }
 
+/// Fournisseur Riverpod pour l'instance d'AndroidTvController (géré par hôte avec autoDispose).
+final androidTvControllerProvider =
+    Provider.autoDispose.family<AndroidTvController, String>((ref, host) {
+  final pairingService = ref.watch(androidTvPairingServiceProvider);
+  final controller = AndroidTvController(
+    host: host,
+    pairingService: pairingService,
+    onStateChanged: (state) {
+      ref.read(androidTvConnectionStateProvider.notifier).set(state);
+    },
+  );
+
+  ref.onDispose(() {
+    controller.dispose();
+  });
+
+  controller.connect();
+  return controller;
+});
+
 /// Fournisseur Riverpod pour l'instance active de [TvController].
+/// Fournit [AndroidTvController] si une Android TV appairée est sélectionnée, sinon [MockTvController].
 final tvControllerProvider = Provider<TvController>((ref) {
+  final selectedTv = ref.watch(selectedTvProvider);
+  if (selectedTv != null && selectedTv.brand == TvBrand.androidTv) {
+    final connState = ref.watch(androidTvConnectionStateProvider);
+    if (connState != AndroidTvConnectionState.unpaired) {
+      return ref.watch(androidTvControllerProvider(selectedTv.ip));
+    }
+  }
   return MockTvController();
 });
