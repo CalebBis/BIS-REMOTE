@@ -1,5 +1,41 @@
 # Journal des modifications (CHANGELOG_AI)
 
+## [015] - Finitions de l'application (nom, orientation, icône, démarrage, barre d'état, README)
+- Date : 2026-11-08
+- Demande : Finitions de l'application sans toucher à la logique TV, connexion, appairage ni WoL : nom "BisTv Remote" (AndroidManifest + title main.dart), orientation portrait verrouillée, génération des icônes Android classique et adaptative avec flutter_launcher_icons depuis assets/icon/icon.png, fond d'écran de démarrage sombre #111418, icônes claires sur barre d'état sombre (SystemUiOverlayStyle), README.md complet en français, et vérification .gitignore / nettoyage.
+- Fichiers créés :
+  - `assets/icon/icon.png` (PNG 1024x1024 source)
+  - `android/app/src/main/res/values/colors.xml` (généré par flutter_launcher_icons)
+  - `android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml` (généré par flutter_launcher_icons)
+  - `android/app/src/main/res/drawable-*/ic_launcher_foreground.png` (généré par flutter_launcher_icons)
+- Fichiers modifiés :
+  - `android/app/src/main/AndroidManifest.xml`
+  - `android/app/src/main/res/drawable/launch_background.xml`
+  - `android/app/src/main/res/drawable-v21/launch_background.xml`
+  - `android/app/src/main/res/mipmap-*/ic_launcher.png`
+  - `lib/main.dart`
+  - `pubspec.yaml`
+  - `pubspec.lock`
+  - `README.md`
+  - `CHANGELOG_AI.md`
+- Fichiers supprimés : Fichiers orphelins temporaires `launcher_icon.*` générés lors de l'essai initial
+- Packages ajoutés :
+  - `flutter_launcher_icons: ^0.14.4` (dev_dependency) : outil pour générer les icônes de lancement Android, licence BSD-2-Clause, activement maintenu, compatible Dart 3.9.2 et Flutter 3.35.7.
+- Détail :
+  - Nom de l'application : `android:label="BisTv Remote"` dans AndroidManifest.xml et `title: 'BisTv Remote'` dans main.dart.
+  - Orientation : Verrouillage portrait strict (`DeviceOrientation.portraitUp`, `portraitDown`) via `SystemChrome.setPreferredOrientations` au démarrage.
+  - Barre d'état système : Style sombre uniforme (`SystemUiOverlayStyle` avec `statusBarColor: Colors.transparent`, `statusBarIconBrightness: Brightness.light`) garantissant la lisibilité de l'heure et du niveau de batterie.
+  - Écran de démarrage Android : Remplacement du fond blanc par la couleur sombre `#FF111418` dans `drawable/launch_background.xml` et `drawable-v21/launch_background.xml` pour éliminer tout flash blanc au lancement.
+  - Icône d'application :
+    - Fichier source `assets/icon/icon.png` vérifié (PNG 1024x1024 valide).
+    - Configuration `flutter_launcher_icons` dans `pubspec.yaml` et génération des icônes classiques pour tous les dpi (mdpi à xxxhdpi) ainsi que de l'icône adaptative avec fond couleur `#0A6CE0` et premier plan centré dans la zone sûre (mipmap-anydpi-v26).
+    - Vérification git : `assets/icon/icon.png` est bien pris en compte par git (non ignoré).
+  - Documentation : README.md réécrit entièrement en français (fonctionnalités, commandes, arborescence, architecture, prérequis et limites connues sans secrets).
+  - Nettoyage : Suppression des fichiers `launcher_icon.*` orphelins générés lors du premier test de configuration.
+  - Validation : `flutter analyze` 100% propre (No issues found!), 31 tests unitaires réussis.
+- État : fonctionne
+- À traiter : Fichier temporaire `assets/icon/Gemini_Generated_Image_csgslcsgslcsgslc.png` laissé intact en attente d'approbation pour suppression.
+
 ## [014] - Allumage à distance par Wake-on-LAN (WoL)
 - Date : 2026-11-08
 - Demande : Ajouter l'allumage à distance par Wake-on-LAN sans nouveau package (dart:io). Champ optionnel `macAddress` rétrocompatible dans `DiscoveredTv`, saisie et validation normalisée de l'adresse MAC sur la TV sélectionnée dans l'écran de découverte avec texte d'aide, service `WakeOnLanService` émettant le paquet magique (102 octets, 3 salves espacées de 300 ms sur ports 9 et 7 en broadcast local /24 et 255.255.255.255 avec `broadcastEnabled`), adaptation du bouton Power (envoi normal si connectée, réveil WoL avec SnackBar et reconnexion accélérée pendant 40s si hors ligne avec MAC, invitation à configurer si sans MAC, message d'échec après 40s si la TV ne répond pas), et logs [WakeOnLan] avec masquage partiel de l'adresse MAC.
